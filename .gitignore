@@ -1,0 +1,52 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*plan.md
+
+# ─── Virtual Environment ──────────────────────────────────────────────────────
+# (project venv is named "crawl")
+crawl/
+venv/
+.venv/
+env/
+.env/
+
+# ─── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Crawler Output (generated reports — not source code) ─────────────────────
+output/
+
+# ─── Checkpoint File (runtime state — regenerated on each run) ────────────────
+crawl_state.json
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Testing ──────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+/tmp/
+
+# ─── IDEs & Editors ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ─── OS Artifacts ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
