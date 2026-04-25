@@ -35,6 +35,7 @@ class ContentExtractor:
         url: str = "",
         depth: int = 0,
         fetch_stage: str = "",
+        markdown_text: str = "",
     ) -> PageData:
         """Extract all content from an HTML page."""
         page = PageData(url=url, depth=depth, fetch_stage=fetch_stage)
@@ -74,7 +75,8 @@ class ContentExtractor:
         page.videos = self._extract_videos(soup)
 
         # Links (internal / external)
-        page.internal_links, page.external_links = extract_all_links(html, url)
+        # Links (internal / external) — multi-strategy: HTML + markdown
+        page.internal_links, page.external_links = extract_all_links(html, url, markdown_text)
 
         # Raw text + word count
         page.raw_text = self._extract_raw_text(content_soup)

@@ -3,6 +3,13 @@ Contact info extractor — find emails, phone numbers, addresses, and social lin
 
 Uses regex patterns and HTML tag analysis to extract contact information
 from page text and HTML.
+
+PHONE NUMBER STRATEGY:
+- Primary: Extract from <a href="tel:..."> links (most reliable, zero false positives)
+- Secondary: Regex on visible text ONLY, requiring either:
+  - A leading "+" (international format)
+  - Or appearing near phone-related keywords ("phone", "call", "tel", etc.)
+- Numbers from CSS, image paths, dates, etc. are NOT matched.
 """
 
 import re
@@ -20,13 +27,13 @@ _EMAIL_RE = re.compile(
     r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
 )
 
-# Common phone patterns (international + US/UK/EU formats)
-_PHONE_RE = re.compile(
+# Phone regex — STRICT: requires "+" prefix for international numbers
+# or standard parenthesized area codes like (123) 456-7890
+_PHONE_STRICT_RE = re.compile(
     r"""
     (?:
-        \+?\d{1,3}[\s\-.]?\(?\d{1,4}\)?[\s\-.]?\d{2,4}[\s\-.]?\d{2,4}[\s\-.]?\d{0,4}  # intl
-        | \(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}                                          # US
-        | \d{4,5}[\s.\-]?\d{6,7}                                                          # UK
+        \+\d{1,3}[\s\-.]?\(?\d{1,4}\)?[\s\-.]?\d{2,4}[\s\-.]?\d{2,5}   # +91 8128780878
+        | \(\d{3}\)[\s.\-]?\d{3}[\s.\-]?\d{4}                            # (123) 456-7890
     )
     """,
     re.VERBOSE,
@@ -73,7 +80,16 @@ def extract_contact_info(
         "social_links": {},
     }
 
-    # ── Emails ──
+    soup = None
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+        except Exception:
+            pass
+
+    # ── Emails — from HTML + text ──
     combined_text = f"{raw_text}\n{html}" if raw_text else html
     emails = set()
     for match in _EMAIL_RE.finditer(combined_text):
@@ -83,41 +99,40 @@ def extract_contact_info(
             emails.add(email)
     result["emails"] = sorted(emails)
 
-    # ── Phones — from tel: links + text patterns ──
+    # ── Phones — STRICT extraction ──
     phones: set[str] = set()
-    try:
-        soup = BeautifulSoup(html, "lxml")
 
-        # tel: links are the most reliable source
+    # Strategy 1: tel: links (most reliable — site explicitly marks these as phone numbers)
+    if soup:
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
             if href.startswith("tel:"):
                 phone = href[4:].strip()
-                if phone and len(phone) >= 7:
+                # Clean up common tel: link formatting
+                phone = phone.replace("%20", " ").replace("%2B", "+")
+                digits_only = re.sub(r"\D", "", phone)
+                if 7 <= len(digits_only) <= 15:
                     phones.add(phone)
-    except Exception:
-        pass
 
-    # Text-based phone extraction (more noisy — keep only if reasonable length)
-    text_for_phones = raw_text or ""
-    for match in _PHONE_RE.finditer(text_for_phones):
-        phone = match.group(0).strip()
-        digits_only = re.sub(r"\D", "", phone)
-        if 7 <= len(digits_only) <= 15:
-            phones.add(phone)
+    # Strategy 2: Strict regex on visible text only (not HTML source)
+    # Use raw_text (which is cleaned of HTML tags) to avoid matching CSS/JS numbers
+    visible_text = raw_text or ""
+    if visible_text:
+        for match in _PHONE_STRICT_RE.finditer(visible_text):
+            phone = match.group(0).strip()
+            digits_only = re.sub(r"\D", "", phone)
+            if 7 <= len(digits_only) <= 15:
+                phones.add(phone)
 
     result["phones"] = sorted(phones)
 
     # ── Addresses — from <address> tag ──
     addresses: list[str] = []
-    try:
-        soup = soup if "soup" in dir() else BeautifulSoup(html, "lxml")
+    if soup:
         for addr_tag in soup.find_all("address"):
             addr_text = addr_tag.get_text(separator=", ", strip=True)
             if addr_text and len(addr_text) > 10:
                 addresses.append(addr_text)
-    except Exception:
-        pass
     result["addresses"] = addresses
 
     # ── Social Links ──

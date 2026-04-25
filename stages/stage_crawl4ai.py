@@ -41,7 +41,7 @@ async def fetch(url: str, config: PipelineConfig) -> CrawlResponse:
         )
 
         run_cfg = CrawlerRunConfig(
-            wait_until="domcontentloaded",       # Wait for network to be quiet
+            wait_until="networkidle",            # Wait for network to be quiet (needed for SPAs)
             page_timeout=config.timeout * 1000,  # milliseconds
         )
 

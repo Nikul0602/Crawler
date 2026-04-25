@@ -19,6 +19,7 @@ from crawler.checkpoint import CrawlCheckpoint
 from discovery.robots_parser import RobotsChecker
 from discovery.sitemap_parser import SitemapParser
 from discovery.link_extractor import extract_internal_links
+from discovery.nav_discovery import discover_nav_links
 from discovery.url_utils import (
     normalize_url,
     extract_base_domain,
@@ -153,10 +154,36 @@ class CrawlOrchestrator:
             added = await self._queue.add_batch(
                 sitemap_urls, depth=1, priority=1,
             )
-            logger.info(f"[sitemap] 📥 Added {added} URLs from sitemaps")
+            logger.info(f"[sitemap] Added {added} URLs from sitemaps")
 
         # Always seed the homepage (priority 0 = highest)
         await self._queue.add(self._base_url, depth=0, priority=0)
+
+        # ── Phase 2.5: Interactive navigation discovery (for SPA sites) ──
+        # Only runs when sitemap yielded few/no URLs — indicates the site
+        # may be a JavaScript SPA with no standard link discovery path.
+        if len(sitemap_urls) < 5:
+            logger.info(
+                "[nav_discovery] Sitemap yielded few URLs, "
+                "attempting interactive navigation discovery..."
+            )
+            try:
+                nav_urls = await discover_nav_links(
+                    self._base_url,
+                    timeout=self._pipeline.config.timeout,
+                )
+                if nav_urls:
+                    added = await self._queue.add_batch(
+                        nav_urls, depth=1, priority=1,
+                    )
+                    logger.info(
+                        f"[nav_discovery] Added {added} URLs from "
+                        f"interactive navigation"
+                    )
+                else:
+                    logger.info("[nav_discovery] No additional URLs found")
+            except Exception as e:
+                logger.warning(f"[nav_discovery] Failed: {e}")
 
         # ── Phase 3+4: Crawl loop ──
         while not self._queue.is_empty:
@@ -260,6 +287,7 @@ class CrawlOrchestrator:
 
             html = response.html or ""
             raw_text = response.content or ""
+            markdown_text = response.markdown or ""
 
             # Content extraction
             page = self._extractor.extract(
@@ -267,6 +295,7 @@ class CrawlOrchestrator:
                 url=url,
                 depth=depth,
                 fetch_stage=response.stage_name,
+                markdown_text=markdown_text,
             )
 
             # If content extractor got no raw_text but pipeline has text, use that
