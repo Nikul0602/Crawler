@@ -22,7 +22,8 @@ import os
 import sys
 from datetime import datetime
 
-from core.config import PipelineConfig, CrawlerConfig
+from backend.core.config import PipelineConfig, CrawlerConfig
+from backend.paths import OUTPUT_DIR
 
 
 def setup_logging(verbose: bool = False):
@@ -105,7 +106,7 @@ def parse_args():
     crawl_group.add_argument(
         "--output",
         dest="output_dir",
-        default="./output",
+        default=str(OUTPUT_DIR),
         help="Output directory for reports (default: ./output)",
     )
     crawl_group.add_argument(
@@ -168,9 +169,9 @@ def parse_args():
 
 async def run_universal_crawl(args):
     """Run the universal website crawler."""
-    from crawler.orchestrator import CrawlOrchestrator
-    from exporters.markdown_report import generate_markdown_report
-    from exporters.json_export import export_json
+    from backend.crawler.orchestrator import CrawlOrchestrator
+    from backend.exporters.markdown_report import generate_markdown_report
+    from backend.exporters.json_export import export_json
 
     # Build pipeline config
     pipeline_config = PipelineConfig(
@@ -267,9 +268,9 @@ async def run_universal_crawl(args):
 
 async def run_job_crawl(args):
     """Run the legacy IT job crawler (original behaviour preserved)."""
-    from core.pipeline import CrawlPipeline
-    from extraction.job_extractor import ITJobExtractor
-    from core.models import JobListing
+    from backend.core.pipeline import CrawlPipeline
+    from backend.extraction.job_extractor import ITJobExtractor
+    from backend.core.models import JobListing
 
     # Build configuration
     config = PipelineConfig(
@@ -305,7 +306,7 @@ async def run_job_crawl(args):
         all_jobs = extractor.extract(response)
         extractor_all = ITJobExtractor(config)
         if response.html:
-            from extraction.job_extractor import ITJobExtractor as IE
+            from backend.extraction.job_extractor import ITJobExtractor as IE
             e = IE(config)
             all_raw = e._extract_from_html(response.html, response.url)
             if not all_raw and response.content:
@@ -406,8 +407,8 @@ def run_server():
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-    # Run the FastAPI application from the api.server module
-    uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=True)
+    # Run the FastAPI application from the backend API module
+    uvicorn.run("backend.api.server:app", host="0.0.0.0", port=8000, reload=True)
 
 
 def main():
@@ -430,3 +431,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

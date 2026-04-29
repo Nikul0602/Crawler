@@ -42,38 +42,28 @@ Stages run in order; the first successful response is used:
 ```
 Crawler/
 ├── main.py               # Entry point & CLI argument handling
-├── config.py             # PipelineConfig & CrawlerConfig dataclasses
-├── models.py             # Shared data models (CrawlResponse, PageData, WebsiteReport, JobListing)
-├── pipeline.py           # 6-stage fallback orchestrator (legacy jobs mode)
+├── README.md
+├── requirements.txt
+├── PLAN.md
+├── crawl/                # Local virtual environment (ignored)
+├── output/               # Generated crawl reports (ignored)
+├── crawl_state.json      # Runtime checkpoint file (ignored)
 │
-├── crawler/              # Universal crawl engine
-│   ├── orchestrator.py   # Async crawl loop, rate limiting, checkpointing
-│   ├── url_queue.py      # Priority URL queue with visited-set deduplication
-│   └── checkpoint.py     # Save / load crawl state to disk
+├── backend/
+│   ├── api/              # FastAPI dashboard API
+│   ├── core/             # Config, models, and 6-stage pipeline
+│   ├── crawler/          # Universal crawl engine
+│   ├── discovery/        # Sitemap, robots, link, and navigation discovery
+│   ├── extraction/       # Content, contact, meta, and job extractors
+│   ├── exporters/        # Markdown and JSON report writers
+│   ├── services/         # Task state/services
+│   ├── stages/           # Individual fetch stages
+│   └── paths.py          # Root-level runtime path constants
 │
-├── discovery/            # URL discovery helpers
-│   ├── sitemap_parser.py # Parses sitemap.xml / sitemap index files
-│   ├── robots_parser.py  # Fetches and enforces robots.txt rules
-│   ├── link_extractor.py # Extracts internal links from HTML
-│   └── url_utils.py      # URL normalisation and domain utilities
-│
-├── extraction/           # Content & job data extractors
-│   ├── content_extractor.py  # Universal page content extractor (BS4)
-│   ├── contact_extractor.py  # Email, phone, address, social link finder
-│   ├── meta_extractor.py     # Meta tags, OG tags, JSON-LD structured data
-│   └── job_extractor.py      # IT job listing parser with 3-pass IT classifier
-│
-├── stages/               # Individual pipeline fetch stages
-│   ├── stage_crawl4ai.py
-│   ├── stage_scrapling.py
-│   ├── stage_jina.py
-│   ├── stage_curl_tls.py
-│   ├── stage_curl_rotated.py
-│   └── stage_httpx.py
-│
-└── output/               # Report generators
-    ├── markdown_report.py    # Formatted Markdown site report
-    └── json_export.py        # Full JSON export of WebsiteReport
+└── frontend/             # Static dashboard UI
+    ├── index.html
+    ├── app.js
+    └── styles.css
 ```
 
 ---
@@ -216,7 +206,7 @@ Results are printed to stdout — either formatted text or JSON.
 
 ## 🔧 Configuration
 
-Key defaults are defined as dataclasses in `config.py`:
+Key defaults are defined as dataclasses in `backend/core/config.py`:
 
 ```python
 # Universal crawler
