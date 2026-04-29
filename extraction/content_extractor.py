@@ -37,10 +37,13 @@ class ContentExtractor:
         fetch_stage: str = "",
         markdown_text: str = "",
     ) -> PageData:
-        """Extract all content from an HTML page."""
+        """Extract all content from an HTML page, or from markdown as fallback."""
         page = PageData(url=url, depth=depth, fetch_stage=fetch_stage)
 
         if not html:
+            # Markdown fallback: extract what we can from markdown-only responses
+            if markdown_text:
+                return self._extract_from_markdown(page, markdown_text, url)
             return page
 
         try:
@@ -74,7 +77,6 @@ class ContentExtractor:
         # Videos
         page.videos = self._extract_videos(soup)
 
-        # Links (internal / external)
         # Links (internal / external) — multi-strategy: HTML + markdown
         page.internal_links, page.external_links = extract_all_links(html, url, markdown_text)
 
@@ -87,6 +89,80 @@ class ContentExtractor:
             f"{len(page.headings.get('h1', []))} h1, "
             f"{len(page.images)} images, "
             f"{len(page.internal_links)} int links"
+        )
+
+        return page
+
+    def _extract_from_markdown(
+        self,
+        page: PageData,
+        md: str,
+        url: str = "",
+    ) -> PageData:
+        """
+        Parse headings, paragraphs, lists, and links from markdown text.
+
+        Used as a fallback when HTML is not available (e.g., Jina Reader
+        responses). Tables, images, and videos are left empty.
+        """
+        import re as _re
+
+        headings: dict[str, list[str]] = {}
+        paragraphs: list[str] = []
+        current_list: list[str] = []
+        all_lists: list[list[str]] = []
+
+        for line in md.splitlines():
+            stripped = line.strip()
+
+            # Headings: # H1, ## H2, etc.
+            heading_match = _re.match(r'^(#{1,6})\s+(.+)$', stripped)
+            if heading_match:
+                level = len(heading_match.group(1))
+                text = heading_match.group(2).strip()
+                if text:
+                    key = f"h{min(level, 6)}"
+                    headings.setdefault(key, []).append(text)
+                # Flush any pending list
+                if current_list:
+                    all_lists.append(current_list)
+                    current_list = []
+                continue
+
+            # List items: lines starting with - or *
+            if stripped.startswith(("-", "*")) and len(stripped) > 2:
+                item = stripped.lstrip("-* ").strip()
+                if item:
+                    current_list.append(item)
+                continue
+
+            # Flush list on non-list line
+            if current_list:
+                all_lists.append(current_list)
+                current_list = []
+
+            # Paragraphs: non-empty lines not starting with #, -, *, >, |
+            if stripped and not stripped.startswith(("#", ">", "|")):
+                if len(stripped) > 20:
+                    paragraphs.append(stripped)
+
+        # Flush last list
+        if current_list:
+            all_lists.append(current_list)
+
+        page.headings = headings
+        page.paragraphs = paragraphs
+        page.lists = [lst for lst in all_lists if len(lst) >= 2]
+
+        # Links from markdown — reuse multi-strategy extractor
+        page.internal_links, page.external_links = extract_all_links("", url, md)
+
+        # Raw text + word count
+        page.raw_text = md
+        page.word_count = len(md.split())
+
+        logger.debug(
+            f"[extract/md] {url} → {page.word_count} words from markdown fallback"
         )
 
         return page

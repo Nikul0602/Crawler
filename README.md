@@ -166,7 +166,8 @@ python main.py https://company.com/careers --mode jobs --disable-browser
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--max-pages` | `200` | Maximum pages to crawl |
+| `--max-pages` | `200` | Maximum successfully crawled pages |
+| `--max-discovered-urls` | `1000` | Maximum unique URLs to discover/enqueue |
 | `--max-depth` | `5` | Maximum link-follow depth from start URL |
 | `--max-time` | `30` | Time budget in minutes |
 | `--delay` | `1.5` | Seconds between requests |
@@ -196,8 +197,8 @@ For a crawled domain `example.com`, outputs are written to `./output/example.com
 ```
 output/
 └── example.com/
-    ├── report_<timestamp>.md    # Human-readable Markdown report
-    └── report_<timestamp>.json  # Machine-readable full data export
+    ├── report.md    # Human-readable Markdown report
+    └── data.json    # Machine-readable full data export
 ```
 
 The **Markdown report** includes:
@@ -220,7 +221,8 @@ Key defaults are defined as dataclasses in `config.py`:
 ```python
 # Universal crawler
 CrawlerConfig(
-    max_pages=200,
+    max_pages=200,              # successfully crawled page cap
+    max_discovered_urls=1000,   # discovery/queue growth cap
     max_depth=5,
     max_time_minutes=30,
     request_delay=1.5,
@@ -256,6 +258,7 @@ All values can be overridden at runtime via CLI flags.
 | `pydantic` | Data validation |
 | `jinja2` | Report templating |
 | `rich` | Terminal output formatting |
+| `tldextract` | Registrable domain extraction |
 | `openai` | (Optional) AI-assisted extraction |
 | `dotenv` | `.env` file support |
 

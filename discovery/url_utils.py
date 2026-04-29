@@ -5,6 +5,13 @@ URL normalization, filtering, and scope enforcement utilities.
 import re
 from urllib.parse import urlparse, urlunparse, urljoin, parse_qs, urlencode
 
+import tldextract
+
+_TLD_EXTRACTOR = tldextract.TLDExtract(
+    suffix_list_urls=(),
+    cache_dir=None,
+)
+
 
 # ── Extensions & prefixes to always exclude ──────────────────────────
 
@@ -102,22 +109,27 @@ def normalize_url(url: str, base_url: str = "") -> str:
 
 def extract_base_domain(url: str) -> str:
     """
-    Extract the registrable domain from a URL.
+    Extract the registrable domain from a URL using tldextract.
 
-    "https://www.example.com/path" → "example.com"
-    "https://blog.shop.example.co.uk/page" → "shop.example.co.uk"
+    Uses public suffix list for accurate domain extraction.
+    Falls back to host-based parsing for localhost, IPs, and
+    internal hostnames where tldextract returns no suffix.
+
+    "https://blog.example.co.uk/path" → "example.co.uk"
+    "https://www.example.com/path"    → "example.com"
+    "http://localhost:8000/path"      → "localhost"
+    "http://127.0.0.1:8000/path"     → "127.0.0.1"
     """
-    parsed = urlparse(url if "://" in url else f"https://{url}")
-    host = parsed.netloc.lower().rstrip(".")
+    parsed_url = url if "://" in url else f"https://{url}"
+    ext = _TLD_EXTRACTOR(parsed_url)
+    if ext.domain and ext.suffix:
+        return f"{ext.domain}.{ext.suffix}".lower()
 
-    # Strip port
-    if ":" in host:
-        host = host.split(":")[0]
-
-    # Strip www.
+    # Fallback for localhost, IP addresses, and internal hosts.
+    parsed = urlparse(parsed_url)
+    host = parsed.netloc.lower().split(":")[0]
     if host.startswith("www."):
         host = host[4:]
-
     return host
 
 

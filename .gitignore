@@ -9,7 +9,7 @@ __pycache__
 dist/
 build/
 .eggs/
-*plan.md
+# *plan.md
 
 # ─── Virtual Environment ──────────────────────────────────────────────────────
 # (project venv is named "crawl")

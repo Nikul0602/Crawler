@@ -126,13 +126,36 @@ def extract_contact_info(
 
     result["phones"] = sorted(phones)
 
-    # ── Addresses — from <address> tag ──
+    # ── Addresses — from <address> tag + plain-text heuristic ──
     addresses: list[str] = []
+    seen_addresses: set[str] = set()
+
+    # Strategy 1: <address> tags (highest confidence)
     if soup:
         for addr_tag in soup.find_all("address"):
             addr_text = addr_tag.get_text(separator=", ", strip=True)
             if addr_text and len(addr_text) > 10:
-                addresses.append(addr_text)
+                normalized = addr_text.strip()
+                if normalized not in seen_addresses:
+                    seen_addresses.add(normalized)
+                    addresses.append(normalized)
+
+    # Strategy 2: Conservative plain-text regex (requires street number + type keyword)
+    _ADDRESS_RE = re.compile(
+        r'\b\d+[\s,]+[\w\s]+'
+        r'(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr|'
+        r'Boulevard|Blvd|Way|Place|Pl|Suite|Ste|Floor|Fl)\b'
+        r'[\w\s,\.]*(?:,\s*[\w\s]+){1,3}',
+        re.I
+    )
+    visible_for_addr = raw_text or ""
+    if visible_for_addr:
+        for match in _ADDRESS_RE.finditer(visible_for_addr):
+            addr = match.group(0).strip()
+            if len(addr) > 15 and addr not in seen_addresses:
+                seen_addresses.add(addr)
+                addresses.append(addr)
+
     result["addresses"] = addresses
 
     # ── Social Links ──

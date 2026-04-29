@@ -108,7 +108,8 @@ class CrawlerConfig:
     """Configuration for the universal website crawler."""
 
     # Scope limits
-    max_pages: int = 200                # hard cap on pages to crawl
+    max_pages: int = 200                # hard cap on successfully crawled pages
+    max_discovered_urls: int = 1000     # hard cap on unique URLs to discover/enqueue
     max_depth: int = 5                  # max link-follow depth from homepage
     max_time_minutes: int = 30          # time budget for entire crawl
 

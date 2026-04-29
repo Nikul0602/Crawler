@@ -118,6 +118,7 @@ class PageData:
     meta_keywords: str = ""
     og_title: str = ""
     og_image: str = ""
+    og_description: str = ""
     canonical_url: str = ""
     language: str = ""
     structured_data: list[dict] = field(default_factory=list)  # JSON-LD entries
@@ -142,6 +143,7 @@ class WebsiteReport:
     # Timing
     crawl_started: str = ""
     crawl_finished: str = ""
+    crawl_stopped_reason: str = ""
 
     # Stats
     total_urls_found: int = 0

@@ -41,8 +41,11 @@ async def fetch(url: str, config: PipelineConfig) -> CrawlResponse:
         )
 
         run_cfg = CrawlerRunConfig(
-            wait_until="networkidle",            # Wait for network to be quiet (needed for SPAs)
+            wait_until="domcontentloaded",       # Use domcontentloaded to avoid timeout on anti-bot sites that keep network active indefinitely
             page_timeout=config.timeout * 1000,  # milliseconds
+            wait_for=config.crawl4ai_wait_for or None,
+            js_code=config.crawl4ai_js_code or None,
+            delay_before_return_html=config.crawl4ai_wait_seconds,
         )
 
         async with AsyncWebCrawler(config=browser_cfg) as crawler:

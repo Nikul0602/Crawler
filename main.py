@@ -60,6 +60,12 @@ def parse_args():
         help="Maximum pages to crawl (default: 200)",
     )
     crawl_group.add_argument(
+        "--max-discovered-urls",
+        type=int,
+        default=1000,
+        help="Maximum unique URLs to discover/enqueue (default: 1000)",
+    )
+    crawl_group.add_argument(
         "--max-depth",
         type=int,
         default=5,
@@ -171,6 +177,7 @@ async def run_universal_crawl(args):
     # Build crawler config
     crawler_config = CrawlerConfig(
         max_pages=args.max_pages,
+        max_discovered_urls=args.max_discovered_urls,
         max_depth=args.max_depth,
         max_time_minutes=args.max_time,
         request_delay=args.delay,
@@ -182,6 +189,7 @@ async def run_universal_crawl(args):
     # Create orchestrator
     orchestrator = CrawlOrchestrator(
         max_pages=crawler_config.max_pages,
+        max_discovered_urls=crawler_config.max_discovered_urls,
         max_depth=crawler_config.max_depth,
         max_time_minutes=crawler_config.max_time_minutes,
         request_delay=crawler_config.request_delay,
