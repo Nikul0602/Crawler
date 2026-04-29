@@ -7,8 +7,8 @@ import logging
 import time
 from typing import Optional
 
-from models import CrawlResponse, CrawlAttempt, StageResult
-from config import PipelineConfig
+from core.models import CrawlResponse, CrawlAttempt, StageResult
+from core.config import PipelineConfig
 from stages import (
     stage_crawl4ai,
     stage_scrapling,

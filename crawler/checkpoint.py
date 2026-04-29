@@ -17,7 +17,7 @@ import os
 from dataclasses import asdict
 from datetime import datetime
 
-from models import PageData
+from core.models import PageData
 
 logger = logging.getLogger(__name__)
 

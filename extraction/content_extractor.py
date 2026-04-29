@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
-from models import PageData
+from core.models import PageData
 from discovery.link_extractor import extract_all_links
 
 logger = logging.getLogger(__name__)

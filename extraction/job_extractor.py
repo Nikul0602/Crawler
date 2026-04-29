@@ -9,8 +9,8 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from models import JobListing, CrawlResponse
-from config import PipelineConfig
+from core.models import JobListing, CrawlResponse
+from core.config import PipelineConfig
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ import random
 import time
 import logging
 
-from models import CrawlResponse, CrawlAttempt, StageResult
-from config import PipelineConfig
+from core.models import CrawlResponse, CrawlAttempt, StageResult
+from core.config import PipelineConfig
 
 logger = logging.getLogger(__name__)
 

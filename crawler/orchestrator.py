@@ -11,9 +11,9 @@ import re
 import time
 from datetime import datetime
 
-from config import PipelineConfig
-from models import CrawlResponse, PageData, WebsiteReport
-from pipeline import CrawlPipeline
+from core.config import PipelineConfig
+from core.models import CrawlResponse, PageData, WebsiteReport
+from core.pipeline import CrawlPipeline
 
 from crawler.url_queue import URLQueue, QueueEntry
 from crawler.checkpoint import CrawlCheckpoint

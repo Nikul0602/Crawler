@@ -9,7 +9,9 @@ Usage (Universal Crawl — default):
 
 Usage (Legacy IT Job Crawl):
     python main.py https://company.com/careers --mode jobs
-    python main.py https://company.com/careers --mode jobs --all-jobs
+
+Usage (Web Dashboard Server):
+    python main.py --mode server
 """
 
 import asyncio
@@ -20,7 +22,7 @@ import os
 import sys
 from datetime import datetime
 
-from config import PipelineConfig, CrawlerConfig
+from core.config import PipelineConfig, CrawlerConfig
 
 
 def setup_logging(verbose: bool = False):
@@ -40,15 +42,16 @@ def parse_args():
     )
     parser.add_argument(
         "url",
-        help="Website URL to crawl (homepage for universal, career page for jobs)",
+        nargs="?",
+        help="Website URL to crawl (required for crawl/jobs, ignored for server)",
     )
 
     # ── Mode selector ──
     parser.add_argument(
         "--mode",
-        choices=["crawl", "jobs"],
+        choices=["crawl", "jobs", "server"],
         default="crawl",
-        help="Crawl mode: 'crawl' (universal, default) or 'jobs' (legacy IT job crawler)",
+        help="Crawl mode: 'crawl' (universal, default), 'jobs' (legacy IT jobs), or 'server' (Web UI)",
     )
 
     # ── Universal crawl options ──
@@ -166,8 +169,8 @@ def parse_args():
 async def run_universal_crawl(args):
     """Run the universal website crawler."""
     from crawler.orchestrator import CrawlOrchestrator
-    from output.markdown_report import generate_markdown_report
-    from output.json_export import export_json
+    from exporters.markdown_report import generate_markdown_report
+    from exporters.json_export import export_json
 
     # Build pipeline config
     pipeline_config = PipelineConfig(
@@ -264,9 +267,9 @@ async def run_universal_crawl(args):
 
 async def run_job_crawl(args):
     """Run the legacy IT job crawler (original behaviour preserved)."""
-    from pipeline import CrawlPipeline
+    from core.pipeline import CrawlPipeline
     from extraction.job_extractor import ITJobExtractor
-    from models import JobListing
+    from core.models import JobListing
 
     # Build configuration
     config = PipelineConfig(
@@ -383,13 +386,45 @@ def _output_json(jobs, response):
 # ═══════════════════════════════════════════════════════════════════════
 
 
+def run_server():
+    """Start the FastAPI Web Dashboard."""
+    try:
+        import uvicorn
+    except ImportError:
+        print("Error: uvicorn is not installed.")
+        print("Please ensure you are using the 'crawl' virtual environment or run: pip install uvicorn fastapi")
+        sys.exit(1)
+
+    print("\n" + "="*60)
+    print("🚀 Starting CrawlMaster Web Dashboard")
+    print("🌐 Access the dashboard at: http://localhost:8000")
+    print("="*60 + "\n")
+
+    # Fix for Playwright/asyncio NotImplementedError on Windows
+    import sys
+    import asyncio
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+    # Run the FastAPI application from the api.server module
+    uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=True)
+
+
 def main():
     args = parse_args()
     setup_logging(args.verbose)
 
-    if args.mode == "jobs":
+    if args.mode == "server":
+        run_server()
+    elif args.mode == "jobs":
+        if not args.url:
+            print("Error: URL is required for 'jobs' mode.")
+            sys.exit(1)
         asyncio.run(run_job_crawl(args))
     else:
+        if not args.url:
+            print("Error: URL is required for 'crawl' mode.")
+            sys.exit(1)
         asyncio.run(run_universal_crawl(args))
 
 
