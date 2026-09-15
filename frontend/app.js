@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('crawl-modal');
     const btnStay = document.getElementById('btn-stay');
     const btnLeave = document.getElementById('btn-leave');
+    const themeToggle = document.getElementById('theme-toggle');
     const tasksTableBody = document.getElementById('tasks-table-body');
     
     // Stats Elements
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Handle placeholder links and buttons
-    const placeholders = document.querySelectorAll('.nav-item:not(.active), .btn-outline, .icon-btn, .btn-text');
+    const placeholders = document.querySelectorAll('.nav-item:not(.active), .btn-outline, .icon-btn:not(.theme-toggle), .btn-text');
     placeholders.forEach(el => {
         el.addEventListener('click', (e) => {
             // Don't intercept the modal stay/leave buttons
@@ -32,6 +33,21 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('This feature is currently under construction! The dashboard is currently focused strictly on initiating and monitoring active crawls.');
         });
     });
+
+    function updateThemeToggle() {
+        const isDark = document.documentElement.dataset.theme === 'dark';
+        const nextTheme = isDark ? 'light' : 'dark';
+        themeToggle.setAttribute('aria-label', `Switch to ${nextTheme} theme`);
+        themeToggle.setAttribute('title', `Switch to ${nextTheme} theme`);
+    }
+
+    themeToggle.addEventListener('click', () => {
+        const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = nextTheme;
+        localStorage.setItem('crawlmaster-theme', nextTheme);
+        updateThemeToggle();
+    });
+    updateThemeToggle();
 
     // Submit form
     form.addEventListener('submit', async (e) => {
@@ -255,3 +271,5 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchTasks();
     pollingInterval = setInterval(fetchTasks, 2000);
 });
+
+

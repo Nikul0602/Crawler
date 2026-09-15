@@ -30,6 +30,9 @@ output/
 # ─── Checkpoint File (runtime state — regenerated on each run) ────────────────
 crawl_state.json
 
+# ─── Tasks history ─────────────────────────────────────────────
+tasks.json
+
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 logs/
