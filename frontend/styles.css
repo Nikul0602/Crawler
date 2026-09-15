@@ -100,6 +100,13 @@ body {
     color: var(--primary);
 }
 
+.logo-image {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: var(--radius-md);
+}
+
 .sidebar-nav {
     display: flex;
     flex-direction: column;

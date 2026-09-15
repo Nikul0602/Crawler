@@ -251,6 +251,8 @@ All values can be overridden at runtime via CLI flags.
 | `tldextract` | Registrable domain extraction |
 | `openai` | (Optional) AI-assisted extraction |
 | `dotenv` | `.env` file support |
+| `fastapi` | Web framework for building the crawler's API |
+| `uvicorn` | ASGI server for running the FastAPI application |
 
 ---
 
