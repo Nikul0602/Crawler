@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrawlMaster - Crawls</title>
+    <link rel="icon" type="image/png" href="/static/assets/logo.png">
+    <script>
+        document.documentElement.dataset.theme = localStorage.getItem('crawlmaster-theme') || 'light';
+    </script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        /* ── Crawls page specific styles ── */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 28px;
+        }
+
+        .page-title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .page-title p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Filter / toolbar row */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-search {
+            position: relative;
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .toolbar-search svg {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }
+
+        .toolbar-search input {
+            width: 100%;
+            padding: 9px 12px 9px 36px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            background-color: var(--input-bg);
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .toolbar-search input:focus {
+            border-color: var(--primary);
+        }
+
+        .filter-select {
+            padding: 9px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            background-color: var(--input-bg);
+            color: var(--text-main);
+            font-size: 14px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        /* Summary pill badges */
+        .summary-pills {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid var(--border-color);
+            background-color: var(--card-bg);
+            color: var(--text-muted);
+        }
+
+        .pill .pill-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+        }
+
+        .pill.all    .pill-dot { background-color: var(--text-muted); }
+        .pill.done   .pill-dot { background-color: var(--accent-green); }
+        .pill.fail   .pill-dot { background-color: var(--accent-red); }
+        .pill.run    .pill-dot { background-color: var(--accent-blue); }
+
+        .pill.active-pill {
+            background-color: var(--active-bg);
+            color: var(--text-main);
+            font-weight: 600;
+            border-color: transparent;
+        }
+
+        /* Full-width table card */
+        .crawls-table-card {
+            padding: 24px;
+        }
+
+        /* Extended columns vs dashboard table */
+        .data-table th, .data-table td {
+            white-space: nowrap;
+        }
+
+        .domain-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .domain-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .domain-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .domain-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .domain-url {
+            font-size: 12px;
+            color: var(--text-muted);
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Error tooltip wrapper */
+        .error-tag {
+            display: inline-block;
+            font-size: 11px;
+            background-color: var(--soft-orange);
+            color: var(--accent-orange);
+            border-radius: 4px;
+            padding: 2px 6px;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        /* Disabled action buttons (display-only) */
+        .action-btn[disabled],
+        .action-btn.display-only {
+            opacity: 0.45;
+            cursor: default;
+        }
+
+        .action-btn.display-only:hover {
+            background-color: transparent;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 64px 32px;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            margin-bottom: 16px;
+            opacity: 0.35;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 6px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        /* Loading skeleton row */
+        .skeleton-row td {
+            padding: 14px 8px;
+        }
+
+        .skeleton-bar {
+            height: 12px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, var(--border-color) 25%, var(--hover-bg) 50%, var(--border-color) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s infinite;
+        }
+
+        @keyframes shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img class="logo-image" src="/static/assets/logo.png" alt="CrawlMaster logo">
+                    <span>CrawlMaster</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Dashboard
+                </a>
+                <a href="/crawls" class="nav-item active">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                    Crawls
+                </a>
+                <a href="/schedules" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    Schedules
+                </a>
+                <a href="/reports" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                    Reports
+                </a>
+                <a href="/settings" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <div class="user-profile">
+                    <div class="avatar">JS</div>
+                    <div class="user-info">
+                        <span class="user-name">John Smith</span>
+                        <span class="user-email">john@example.com</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top bar -->
+            <header class="topbar">
+                <div class="page-title">
+                    <h1>All Crawls</h1>
+                    <p>Browse, search and filter every crawl job ever submitted.</p>
+                </div>
+                <div class="topbar-actions">
+                    <div class="icon-btn" id="notif-btn" title="Notifications">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    </div>
+                    <button class="icon-btn theme-toggle" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme">
+                        <svg class="theme-icon theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                        <svg class="theme-icon theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Summary pills -->
+            <div class="summary-pills" id="summary-pills">
+                <span class="pill all active-pill" data-filter="all">
+                    <span class="pill-dot"></span>
+                    All <span id="pill-all-count">—</span>
+                </span>
+                <span class="pill done" data-filter="Completed">
+                    <span class="pill-dot"></span>
+                    Completed <span id="pill-done-count">—</span>
+                </span>
+                <span class="pill run" data-filter="Running">
+                    <span class="pill-dot"></span>
+                    Running <span id="pill-run-count">—</span>
+                </span>
+                <span class="pill" style="--pill-color: var(--text-muted);" data-filter="Queued">
+                    <span class="pill-dot" style="background: var(--text-muted)"></span>
+                    Queued <span id="pill-queued-count">—</span>
+                </span>
+                <span class="pill fail" data-filter="Failed">
+                    <span class="pill-dot"></span>
+                    Failed <span id="pill-fail-count">—</span>
+                </span>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="toolbar-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="search-input" placeholder="Search by URL or domain…">
+                </div>
+                <select class="filter-select" id="sort-select">
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="pages-desc">Most pages</option>
+                    <option value="pages-asc">Fewest pages</option>
+                </select>
+            </div>
+
+            <!-- Crawls table -->
+            <div class="card crawls-table-card">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Site</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Pages</th>
+                                <th>Started</th>
+                                <th>Duration</th>
+                                <th>Mode</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="crawls-table-body">
+                            <!-- Skeleton rows while loading -->
+                            <tr class="skeleton-row">
+                                <td><div class="skeleton-bar" style="width:160px"></div></td>
+                                <td><div class="skeleton-bar" style="width:70px"></div></td>
+                                <td><div class="skeleton-bar" style="width:100px"></div></td>
+                                <td><div class="skeleton-bar" style="width:40px"></div></td>
+                                <td><div class="skeleton-bar" style="width:80px"></div></td>
+                                <td><div class="skeleton-bar" style="width:50px"></div></td>
+                                <td><div class="skeleton-bar" style="width:60px"></div></td>
+                                <td><div class="skeleton-bar" style="width:56px"></div></td>
+                            </tr>
+                            <tr class="skeleton-row">
+                                <td><div class="skeleton-bar" style="width:140px"></div></td>
+                                <td><div class="skeleton-bar" style="width:80px"></div></td>
+                                <td><div class="skeleton-bar" style="width:100px"></div></td>
+                                <td><div class="skeleton-bar" style="width:30px"></div></td>
+                                <td><div class="skeleton-bar" style="width:80px"></div></td>
+                                <td><div class="skeleton-bar" style="width:50px"></div></td>
+                                <td><div class="skeleton-bar" style="width:60px"></div></td>
+                                <td><div class="skeleton-bar" style="width:56px"></div></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function wip(e) {
+        e.preventDefault();
+        alert('This feature is currently under construction!');
+    }
+
+    function formatTimeAgo(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + 'y ago';
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + 'mo ago';
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + 'd ago';
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + 'h ago';
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + 'm ago';
+        return Math.floor(seconds) + 's ago';
+    }
+
+    function getHostname(url) {
+        try { return new URL(url).hostname || url; } catch (e) { return url; }
+    }
+
+    function avatarColor(status) {
+        if (status === 'Completed') return 'var(--accent-green)';
+        if (status === 'Running')   return 'var(--accent-blue)';
+        if (status === 'Failed')    return 'var(--accent-red)';
+        return 'var(--text-muted)';
+    }
+
+    function statusClass(status) {
+        if (status === 'Completed') return 'status-completed';
+        if (status === 'Running')   return 'status-running';
+        if (status === 'Failed')    return 'status-failed';
+        return 'status-queued';
+    }
+
+    // ── Theme toggle ─────────────────────────────────────────────────────────
+
+    const themeToggle = document.getElementById('theme-toggle');
+    function updateThemeToggle() {
+        const isDark = document.documentElement.dataset.theme === 'dark';
+        themeToggle.setAttribute('aria-label', `Switch to ${isDark ? 'light' : 'dark'} theme`);
+        themeToggle.setAttribute('title',      `Switch to ${isDark ? 'light' : 'dark'} theme`);
+    }
+    themeToggle.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem('crawlmaster-theme', next);
+        updateThemeToggle();
+    });
+    updateThemeToggle();
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    let allTasks = [];
+    let activeFilter = 'all';
+    let searchQuery  = '';
+    let sortMode     = 'newest';
+
+    // ── Fetch ─────────────────────────────────────────────────────────────────
+
+    async function fetchAndRender() {
+        try {
+            const res   = await fetch('/api/tasks');
+            allTasks    = await res.json();
+        } catch (err) {
+            console.error('Failed to fetch tasks:', err);
+        }
+        updatePills();
+        renderTable();
+    }
+
+    // ── Pills ─────────────────────────────────────────────────────────────────
+
+    function updatePills() {
+        document.getElementById('pill-all-count').textContent    = allTasks.length;
+        document.getElementById('pill-done-count').textContent   = allTasks.filter(t => t.status === 'Completed').length;
+        document.getElementById('pill-run-count').textContent    = allTasks.filter(t => t.status === 'Running').length;
+        document.getElementById('pill-queued-count').textContent = allTasks.filter(t => t.status === 'Queued').length;
+        document.getElementById('pill-fail-count').textContent   = allTasks.filter(t => t.status === 'Failed').length;
+    }
+
+    document.getElementById('summary-pills').addEventListener('click', (e) => {
+        const pill = e.target.closest('[data-filter]');
+        if (!pill) return;
+        document.querySelectorAll('.pill').forEach(p => p.classList.remove('active-pill'));
+        pill.classList.add('active-pill');
+        activeFilter = pill.dataset.filter;
+        renderTable();
+    });
+
+    // ── Search & sort ─────────────────────────────────────────────────────────
+
+    document.getElementById('search-input').addEventListener('input', (e) => {
+        searchQuery = e.target.value.toLowerCase().trim();
+        renderTable();
+    });
+
+    document.getElementById('sort-select').addEventListener('change', (e) => {
+        sortMode = e.target.value;
+        renderTable();
+    });
+
+    // ── Render ────────────────────────────────────────────────────────────────
+
+    function renderTable() {
+        const tbody = document.getElementById('crawls-table-body');
+        tbody.innerHTML = '';
+
+        // Filter
+        let tasks = allTasks.filter(t => {
+            const matchesFilter = activeFilter === 'all' || t.status === activeFilter;
+            const matchesSearch = !searchQuery ||
+                t.url.toLowerCase().includes(searchQuery) ||
+                getHostname(t.url).toLowerCase().includes(searchQuery);
+            return matchesFilter && matchesSearch;
+        });
+
+        // Sort
+        tasks = tasks.slice().sort((a, b) => {
+            if (sortMode === 'oldest')     return a.started_at.localeCompare(b.started_at);
+            if (sortMode === 'pages-desc') return (b.pages_crawled || 0) - (a.pages_crawled || 0);
+            if (sortMode === 'pages-asc')  return (a.pages_crawled || 0) - (b.pages_crawled || 0);
+            // newest (default)
+            return b.started_at.localeCompare(a.started_at);
+        });
+
+        if (tasks.length === 0) {
+            tbody.innerHTML = `
+                <tr><td colspan="8">
+                    <div class="empty-state">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                        </svg>
+                        <h3>No crawls found</h3>
+                        <p>Try a different filter or start a new crawl from the Dashboard.</p>
+                    </div>
+                </td></tr>`;
+            return;
+        }
+
+        tasks.forEach(task => {
+            const hostname  = getHostname(task.url);
+            const initial   = hostname.charAt(0).toUpperCase();
+            const color     = avatarColor(task.status);
+            const sc        = statusClass(task.status);
+            const progress  = task.status === 'Completed' ? 100 : (task.progress || 0);
+            const started   = new Date(task.started_at);
+            const timeAgo   = formatTimeAgo(started);
+            const timeStr   = started.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const duration  = task.duration || '—';
+            const fullUrl   = task.url.length > 35 ? task.url.substring(0, 35) + '…' : task.url;
+
+            // Error badge (only when failed and error exists)
+            const errorBadge = (task.status === 'Failed' && task.error)
+                ? `<span class="error-tag" title="${task.error.replace(/"/g, '&quot;')}">${task.error}</span>`
+                : '';
+
+            const tr = document.createElement('tr');
+            const cancelAction = (task.status === 'Running' || task.status === 'Queued' || task.status === 'CancellationRequested')
+                ? `<button class="action-btn cancel-task-btn" data-task-id="${task.id}" title="Cancel Crawl" ${task.status === 'CancellationRequested' ? 'disabled' : ''}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+                   </button>`
+                : '';
+
+            tr.innerHTML = `
+                <td>
+                    <div class="domain-cell">
+                        <div class="domain-avatar" style="background-color: ${color}">${initial}</div>
+                        <div class="domain-info">
+                            <span class="domain-name">${hostname}</span>
+                            <span class="domain-url" title="${task.url}">${fullUrl}</span>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div class="status-badge ${sc}">
+                        <div class="status-dot"></div>
+                        ${task.status}
+                    </div>
+                    ${errorBadge}
+                </td>
+                <td class="td-progress">
+                    <div class="progress-info">
+                        <span>${progress}%</span>
+                    </div>
+                    <div class="table-progress-bar">
+                        <div class="table-progress-fill" style="width: ${progress}%; background-color: ${color}"></div>
+                    </div>
+                </td>
+                <td>${task.pages_crawled || 0}</td>
+                <td>
+                    <div class="crawl-details">
+                        <span>${timeAgo}</span>
+                        <span class="crawl-url">${timeStr}</span>
+                    </div>
+                </td>
+                <td>${duration}</td>
+                <td><span style="font-size:12px; color:var(--text-muted);">crawl</span></td>
+                <td>
+                    <div class="table-actions">
+                        ${cancelAction}
+                        <button class="action-btn display-only" title="View Logs (coming soon)" tabindex="-1">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                        </button>
+                        <button class="action-btn display-only" title="More Options (coming soon)" tabindex="-1">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="1"></circle>
+                                <circle cx="12" cy="5" r="1"></circle>
+                                <circle cx="12" cy="19" r="1"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+
+            const cancelButton = tr.querySelector('.cancel-task-btn');
+            if (cancelButton) {
+                cancelButton.addEventListener('click', async () => {
+                    cancelButton.disabled = true;
+                    try {
+                        const response = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/cancel`, { method: 'POST' });
+                        if (!response.ok) throw new Error((await response.json()).detail || 'Cancellation failed');
+                        await fetchAndRender();
+                    } catch (error) {
+                        console.error('Failed to cancel crawl:', error);
+                        cancelButton.disabled = false;
+                        alert(error.message || 'Failed to cancel crawl');
+                    }
+                });
+            }
+        });
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────────────────
+    fetchAndRender();
+    // Live-refresh every 5 seconds (less aggressive than dashboard's 2s)
+    setInterval(fetchAndRender, 5000);
+    </script>
+</body>
+</html>

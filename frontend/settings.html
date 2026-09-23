@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrawlMaster - Settings</title>
+    <link rel="icon" type="image/png" href="/static/assets/logo.png">
+    <script>
+        document.documentElement.dataset.theme = localStorage.getItem('crawlmaster-theme') || 'light';
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .page-header {
+            margin-bottom: 24px;
+        }
+        .settings-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+        .settings-tab {
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .settings-tab:hover {
+            color: var(--text-main);
+            background-color: var(--hover-bg);
+        }
+        .settings-tab.active {
+            color: var(--primary);
+            background-color: var(--soft-green);
+            font-weight: 600;
+        }
+        .settings-pane {
+            display: none;
+        }
+        .settings-pane.active {
+            display: block;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .form-field label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        .form-field .field-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .form-field input, .form-field select {
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            background-color: var(--input-bg);
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+        }
+        .stage-toggle-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            margin-bottom: 12px;
+        }
+        .stage-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .stage-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .stage-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--border-color);
+            transition: .2s;
+            border-radius: 20px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: var(--primary);
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(16px);
+        }
+        .storage-card {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img class="logo-image" src="/static/assets/logo.png" alt="CrawlMaster logo">
+                    <span>CrawlMaster</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Dashboard
+                </a>
+                <a href="/crawls" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                    Crawls
+                </a>
+                <a href="/schedules" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    Schedules
+                </a>
+                <a href="/reports" class="nav-item">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                    Reports
+                </a>
+                <a href="/settings" class="nav-item active">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <div class="user-profile">
+                    <div class="avatar">JS</div>
+                    <div class="user-info">
+                        <span class="user-name">John Smith</span>
+                        <span class="user-email">john@example.com</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="topbar">
+                <div class="welcome-text">
+                    <h1>Crawler & System Settings</h1>
+                    <p>Customize crawling defaults, toggle pipeline stages, enter API keys, and manage storage.</p>
+                </div>
+                <div class="topbar-actions">
+                    <button class="icon-btn theme-toggle" id="theme-toggle" type="button" aria-label="Switch theme">
+                        <svg class="theme-icon theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                        <svg class="theme-icon theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Tabs -->
+            <div class="settings-tabs">
+                <div class="settings-tab active" data-tab="crawler">Crawler Defaults</div>
+                <div class="settings-tab" data-tab="pipeline">Pipeline Stages</div>
+                <div class="settings-tab" data-tab="storage">Storage & Maintenance</div>
+                <div class="settings-tab" data-tab="appearance">Appearance & UX</div>
+            </div>
+
+            <!-- Tab 1: Crawler Defaults -->
+            <div class="card settings-pane active" id="pane-crawler" style="padding: 24px;">
+                <form id="form-crawler">
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label>Default Max Pages</label>
+                            <span class="field-desc">Maximum number of pages crawled per website</span>
+                            <input type="number" id="sett-max-pages" min="1" max="5000">
+                        </div>
+                        <div class="form-field">
+                            <label>Default Max Depth</label>
+                            <span class="field-desc">Maximum link depth from homepage</span>
+                            <input type="number" id="sett-max-depth" min="1" max="20">
+                        </div>
+                        <div class="form-field">
+                            <label>Concurrency</label>
+                            <span class="field-desc">Simultaneous requests per crawl worker</span>
+                            <input type="number" id="sett-concurrent" min="1" max="20">
+                        </div>
+                        <div class="form-field">
+                            <label>Request Delay (seconds)</label>
+                            <span class="field-desc">Delay between subsequent HTTP requests</span>
+                            <input type="number" step="0.1" id="sett-delay" min="0" max="60">
+                        </div>
+                        <div class="form-field">
+                            <label>Time Budget (minutes)</label>
+                            <span class="field-desc">Hard stop timeout per crawl task</span>
+                            <input type="number" id="sett-max-time" min="1" max="1440">
+                        </div>
+                        <div class="form-field">
+                            <label>Robots.txt Policy</label>
+                            <span class="field-desc">Respect robots.txt crawl rules by default</span>
+                            <div style="margin-top: 8px;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="sett-respect-robots">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-outline" id="btn-reset-defaults">Reset to Factory</button>
+                        <button type="submit" class="btn btn-primary">Save Crawler Defaults</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Tab 2: Pipeline Stages -->
+            <div class="card settings-pane" id="pane-pipeline" style="padding: 24px;">
+                <form id="form-pipeline">
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                        Enable or disable specific fetch stages. The crawler escalates through enabled stages in order.
+                    </p>
+                    
+                    <div class="stage-toggle-card">
+                        <div class="stage-info">
+                            <span class="stage-title">1. Crawl4AI (Chromium JS Rendering)</span>
+                            <span class="stage-desc">Full browser environment for single-page applications</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="stage-crawl4ai">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="stage-toggle-card">
+                        <div class="stage-info">
+                            <span class="stage-title">2. Scrapling (Stealth Headless Browser)</span>
+                            <span class="stage-desc">Antidetect browser for bypassing basic bot protections</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="stage-scrapling">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="stage-toggle-card">
+                        <div class="stage-info">
+                            <span class="stage-title">3. Jina Reader Proxy</span>
+                            <span class="stage-desc">Cloud-based reader proxy (r.jina.ai)</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="stage-jina">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="stage-toggle-card">
+                        <div class="stage-info">
+                            <span class="stage-title">4. curl_cffi TLS Impersonation</span>
+                            <span class="stage-desc">Chrome 120 browser TLS fingerprint simulation</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="stage-curl-tls">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="stage-toggle-card">
+                        <div class="stage-info">
+                            <span class="stage-title">5. curl_cffi Rotated Profiles</span>
+                            <span class="stage-desc">Multiple rotating browser profiles with jitter/retries</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="stage-curl-rotated">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="stage-toggle-card">
+                        <div class="stage-info">
+                            <span class="stage-title">6. HTTPX Plain Client</span>
+                            <span class="stage-desc">Standard async HTTP/2 fallback client</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="stage-httpx">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-field" style="margin-top: 24px; margin-bottom: 24px;">
+                        <label>Jina Reader API Key</label>
+                        <span class="field-desc">Optional key for higher Jina Reader rate limits (stored securely)</span>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="password" id="sett-jina-key" placeholder="Enter key (sk-...)" style="flex: 1;">
+                            <button type="button" class="btn btn-outline" id="btn-toggle-key">Show</button>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button type="submit" class="btn btn-primary">Save Pipeline Settings</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Tab 3: Storage & Maintenance -->
+            <div class="card settings-pane" id="pane-storage" style="padding: 24px;">
+                <h3 style="font-size: 16px; margin-bottom: 16px;">Storage Footprint</h3>
+                <div class="storage-card">
+                    <div>
+                        <div style="font-weight: 600;">Reports Output Directory</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Stored crawls, JSON exports, and Markdown files</div>
+                    </div>
+                    <div style="font-weight: 700; font-size: 16px;" id="storage-output">-</div>
+                </div>
+                <div class="storage-card">
+                    <div>
+                        <div style="font-weight: 600;">Internal Data Directory</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Tasks, schedules, and application preferences</div>
+                    </div>
+                    <div style="font-weight: 700; font-size: 16px;" id="storage-data">-</div>
+                </div>
+
+                <h3 style="font-size: 16px; margin-top: 32px; margin-bottom: 16px;">System Maintenance</h3>
+                <div class="storage-card">
+                    <div>
+                        <div style="font-weight: 600;">Crawl State Checkpoint</div>
+                        <div style="font-size: 12px; color: var(--text-muted);" id="checkpoint-status">Checking...</div>
+                    </div>
+                    <button class="btn btn-outline" id="btn-clear-checkpoint">Clear Checkpoint</button>
+                </div>
+            </div>
+
+            <!-- Tab 4: Appearance -->
+            <div class="card settings-pane" id="pane-appearance" style="padding: 24px;">
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label>Color Theme</label>
+                        <span class="field-desc">Choose your preferred dashboard interface appearance</span>
+                        <select id="sett-theme">
+                            <option value="light">Light Theme</option>
+                            <option value="dark">Dark Theme</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Dashboard Polling Interval</label>
+                        <span class="field-desc">How often the active crawls list auto-refreshes</span>
+                        <select id="sett-polling">
+                            <option value="2">2 seconds (Real-time)</option>
+                            <option value="5">5 seconds (Balanced)</option>
+                            <option value="10">10 seconds (Low Resource)</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end;">
+                    <button class="btn btn-primary" id="btn-save-appearance">Save Preferences</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/settings.js"></script>
+</body>
+</html>

@@ -8,6 +8,7 @@ for a full-site crawl. Reuses the existing CrawlPipeline for per-page fetching.
 import asyncio
 import logging
 import re
+import threading
 import time
 from datetime import datetime
 
@@ -119,6 +120,7 @@ class CrawlOrchestrator:
         url: str,
         resume: bool = False,
         progress_callback=None,
+        cancellation_event: threading.Event | None = None,
     ) -> WebsiteReport:
         """
         Crawl an entire website starting from the given URL.
@@ -134,6 +136,9 @@ class CrawlOrchestrator:
         """
         self._crawl_started = datetime.now().isoformat()
         start_time = time.perf_counter()
+
+        def cancelled() -> bool:
+            return cancellation_event is not None and cancellation_event.is_set()
 
         # Normalize and extract domain
         self._base_url = normalize_url(url)
@@ -153,6 +158,11 @@ class CrawlOrchestrator:
 
         # ── Resume from checkpoint? ──
         resume_succeeded = False
+
+        if cancelled():
+            stop_reason = "cancelled"
+            report = self._build_report(datetime.now().isoformat(), stop_reason)
+            return report
 
         if resume and self._checkpoint.exists():
             restored = self._checkpoint.load()
@@ -194,7 +204,7 @@ class CrawlOrchestrator:
 
         if not resume_succeeded:
             # ── Phase 1: Robots.txt ──
-            if self.respect_robots:
+            if self.respect_robots and not cancelled():
                 self._robots = await RobotsChecker.from_url(self._base_url)
 
                 # Use robots.txt crawl-delay if specified and higher than our default
@@ -208,22 +218,23 @@ class CrawlOrchestrator:
             robot_sitemaps = self._robots.sitemaps if self._robots else []
 
             parser = SitemapParser(self._base_url)
-            sitemap_urls = await parser.discover(extra_sitemap_urls=robot_sitemaps)
+            sitemap_urls = [] if cancelled() else await parser.discover(extra_sitemap_urls=robot_sitemaps)
 
             # Seed queue with sitemap URLs (priority 1 = high)
-            if sitemap_urls:
+            if sitemap_urls and not cancelled():
                 added = await self._queue.add_batch(
                     sitemap_urls, depth=1, priority=1,
                 )
                 logger.info(f"[sitemap] Added {added} URLs from sitemaps")
 
             # Always seed the homepage (priority 0 = highest)
-            await self._queue.add(self._base_url, depth=0, priority=0)
+            if not cancelled():
+                await self._queue.add(self._base_url, depth=0, priority=0)
 
             # ── Phase 2.5: Interactive navigation discovery (for SPA sites) ──
             # Only runs when sitemap yielded few/no URLs — indicates the site
             # may be a JavaScript SPA with no standard link discovery path.
-            if len(sitemap_urls) < 5:
+            if len(sitemap_urls) < 5 and not cancelled():
                 logger.info(
                     "[nav_discovery] Sitemap yielded few URLs, "
                     "attempting interactive navigation discovery..."
@@ -248,7 +259,9 @@ class CrawlOrchestrator:
                     logger.warning(f"[nav_discovery] Failed: {e}")
 
         # ── Phase 3+4: Concurrent crawl loop ──
-        stop_reason = await self._run_crawl_loop(start_time, progress_callback)
+        stop_reason = await self._run_crawl_loop(
+            start_time, progress_callback, cancellation_event
+        )
 
         # ── Phase 5: Aggregate into report ──
         crawl_finished = datetime.now().isoformat()
@@ -257,7 +270,7 @@ class CrawlOrchestrator:
         # Only delete checkpoint on full completion (queue exhausted)
         if stop_reason == "queue_empty":
             self._checkpoint.delete()
-        else:
+        elif stop_reason != "cancelled":
             self._save_checkpoint(stop_reason)
             logger.info(
                 f"[checkpoint] Crawl stopped: {stop_reason}. "
@@ -292,6 +305,7 @@ class CrawlOrchestrator:
         self,
         start_time: float,
         progress_callback=None,
+        cancellation_event: threading.Event | None = None,
     ) -> str:
         """
         Bounded async task fanout crawl loop.
@@ -303,6 +317,10 @@ class CrawlOrchestrator:
         self._stopped_active_entries = []
 
         while True:
+            if cancellation_event is not None and cancellation_event.is_set():
+                stop_reason = "cancelled"
+                break
+
             # ── Check stop conditions ──
             if len(self._completed_pages) >= self.max_pages:
                 stop_reason = "page_limit"
@@ -318,6 +336,9 @@ class CrawlOrchestrator:
                 len(active_tasks) < self.max_concurrent
                 and len(self._completed_pages) + len(active_tasks) < self.max_pages
             ):
+                if cancellation_event is not None and cancellation_event.is_set():
+                    stop_reason = "cancelled"
+                    break
                 entry = await self._queue.get()
                 if entry is None:
                     break  # queue empty
@@ -368,7 +389,7 @@ class CrawlOrchestrator:
                     progress_callback,
                 )
 
-        # Cancel remaining in-flight tasks on time-budget/page-limit shutdown.
+        # Cancel remaining in-flight tasks on cancellation/time-budget/page-limit shutdown.
         # Save their entries so they resume later instead of being counted done.
         if active_tasks:
             for task in active_tasks:

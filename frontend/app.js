@@ -23,16 +23,23 @@ document.addEventListener('DOMContentLoaded', () => {
         Notification.requestPermission();
     }
 
-    // Handle placeholder links and buttons
-    const placeholders = document.querySelectorAll('.nav-item:not(.active), .btn-outline, .icon-btn:not(.theme-toggle), .btn-text');
-    placeholders.forEach(el => {
-        el.addEventListener('click', (e) => {
-            // Don't intercept the modal stay/leave buttons
-            if (el.id === 'btn-stay' || el.id === 'btn-leave') return;
+    // Only the notification bell icon remains a placeholder for now
+    const notifBtn = document.querySelector('.icon-btn:not(.theme-toggle)');
+    if (notifBtn) {
+        notifBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            alert('This feature is currently under construction! The dashboard is currently focused strictly on initiating and monitoring active crawls.');
+            alert('Notifications panel coming soon!');
         });
-    });
+    }
+
+    // "View All Crawls" button → navigate to /crawls
+    const viewAllBtn = document.querySelector('.btn-text');
+    if (viewAllBtn) {
+        viewAllBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.location.href = '/crawls';
+        });
+    }
 
     function updateThemeToggle() {
         const isDark = document.documentElement.dataset.theme === 'dark';
