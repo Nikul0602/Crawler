@@ -10,4 +10,5 @@ TASKS_FILE = DATA_DIR / "tasks.json"
 SCHEDULES_FILE = DATA_DIR / "schedules.json"
 SETTINGS_FILE = DATA_DIR / "settings.json"
 CHECKPOINT_FILE = PROJECT_ROOT / "crawl_state.json"
+CHECKPOINTS_DIR = DATA_DIR / "checkpoints"
 

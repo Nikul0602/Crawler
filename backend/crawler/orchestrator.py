@@ -79,6 +79,7 @@ class CrawlOrchestrator:
         respect_robots: bool = True,
         checkpoint_every: int = 25,
         checkpoint_file: str = str(CHECKPOINT_FILE),
+        cancellation_grace_seconds: int = 30,
         pipeline_config: PipelineConfig | None = None,
     ):
         self.max_pages = max_pages
@@ -89,6 +90,7 @@ class CrawlOrchestrator:
         self.max_concurrent = max_concurrent
         self.respect_robots = respect_robots
         self.checkpoint_every = checkpoint_every
+        self.cancellation_grace_seconds = cancellation_grace_seconds
 
         # Sub-components
         self._pipeline = CrawlPipeline(pipeline_config or PipelineConfig())
@@ -352,7 +354,7 @@ class CrawlOrchestrator:
                 # Launch task with rate-limiting
                 async def _process_entry(e: QueueEntry = entry) -> PageData | None:
                     await self._respect_rate_limit()
-                    return await self._process_page(e.url, e.depth)
+                    return await self._process_page(e.url, e.depth, cancellation_event)
 
                 task = asyncio.create_task(_process_entry())
                 self._active_entries[task] = entry
@@ -371,13 +373,18 @@ class CrawlOrchestrator:
 
             done, active_tasks = await asyncio.wait(
                 active_tasks,
-                timeout=remaining_time,
+                timeout=min(remaining_time, 1.0),
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
             if not done:
-                stop_reason = "time_budget"
-                break
+                if cancellation_event is not None and cancellation_event.is_set():
+                    stop_reason = "cancelled"
+                    break
+                if time.perf_counter() - start_time >= self.max_time_seconds:
+                    stop_reason = "time_budget"
+                    break
+                continue
 
             for task in done:
                 entry = self._active_entries.pop(task)
@@ -402,7 +409,14 @@ class CrawlOrchestrator:
                     })
                     self._queue.mark_abandoned()
                 task.cancel()
-            await asyncio.gather(*active_tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*active_tasks, return_exceptions=True),
+                    timeout=self.cancellation_grace_seconds
+                    if stop_reason == "cancelled" else None,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("[crawl] Cancellation grace period expired")
 
         return stop_reason
 
@@ -465,8 +479,12 @@ class CrawlOrchestrator:
 
     # ── Page processing ────────────────────────────────────────────────
 
-    async def _process_page(self, url: str, depth: int) -> PageData | None:
+    async def _process_page(
+        self, url: str, depth: int, cancellation_event: threading.Event | None = None
+    ) -> PageData | None:
         """Fetch a single page and extract its content."""
+        if cancellation_event is not None and cancellation_event.is_set():
+            return None
         logger.info(
             f"[{len(self._completed_pages)+1}] "
             f"Crawling (d={depth}): {url}"
@@ -475,6 +493,9 @@ class CrawlOrchestrator:
         try:
             # Use existing 6-stage pipeline for fetching
             response: CrawlResponse = await self._pipeline.crawl(url)
+
+            if cancellation_event is not None and cancellation_event.is_set():
+                return None
 
             if not response.success:
                 self._failed_urls.append({

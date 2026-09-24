@@ -592,7 +592,7 @@
                 <td>
                     <div class="table-actions">
                         ${cancelAction}
-                        <button class="action-btn display-only" title="View Logs (coming soon)" tabindex="-1">
+                        <button class="action-btn task-details-btn" data-task-id="${task.id}" title="View Task Details">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -601,7 +601,7 @@
                                 <polyline points="10 9 9 9 8 9"></polyline>
                             </svg>
                         </button>
-                        <button class="action-btn display-only" title="More Options (coming soon)" tabindex="-1">
+                        <button class="action-btn task-options-btn" data-task-id="${task.id}" title="Task Options">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="1"></circle>
                                 <circle cx="12" cy="5" r="1"></circle>
@@ -628,6 +628,26 @@
                     }
                 });
             }
+
+            tr.querySelector('.task-details-btn').addEventListener('click', () => {
+                const details = task.error || `Status: ${task.status}\nPages crawled: ${task.pages_crawled || 0}`;
+                alert(details);
+            });
+            tr.querySelector('.task-options-btn').addEventListener('click', async () => {
+                if (task.report_domain && confirm('Open the generated report?')) {
+                    window.location.href = `/reports?domain=${encodeURIComponent(task.report_domain)}`;
+                    return;
+                }
+                if (confirm('Re-run this crawl?')) {
+                    const response = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/rerun`, { method: 'POST' });
+                    if (!response.ok) {
+                        const error = await response.json();
+                        alert(error.detail || 'Unable to re-run crawl');
+                    } else {
+                        await fetchAndRender();
+                    }
+                }
+            });
         });
     }
 

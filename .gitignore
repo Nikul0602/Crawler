@@ -26,6 +26,7 @@ env/
 
 # ─── Crawler Output (generated reports — not source code) ─────────────────────
 output/
+data/
 
 # ─── Checkpoint File (runtime state — regenerated on each run) ────────────────
 crawl_state.json

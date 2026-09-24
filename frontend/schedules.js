@@ -181,11 +181,15 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.querySelector('.btn-delete').addEventListener('click', async () => {
                 if (confirm(`Delete schedule "${s.name}"?`)) {
                     try {
-                        await fetch(`/api/schedules/${s.id}`, { method: 'DELETE' });
-                        showToast('Schedule deleted');
+                        const response = await fetch(`/api/schedules/${s.id}?cancel_active=true`, { method: 'DELETE' });
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.detail || 'Delete failed');
+                        showToast(result.cancellation_pending
+                            ? 'Schedule deleted. Active crawl is stopping...'
+                            : 'Schedule deleted');
                         loadSchedules();
                     } catch (e) {
-                        showToast('Failed to delete schedule', 'error');
+                        showToast(e.message || 'Failed to delete schedule', 'error');
                     }
                 }
             });

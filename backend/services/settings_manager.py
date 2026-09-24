@@ -82,6 +82,23 @@ class SettingsManager:
                     continue  # keep existing
                 raw[key] = str(value)
                 continue
+            if key in {"max_pages", "max_depth", "concurrent", "max_time"}:
+                value = int(value)
+                limits = {
+                    "max_pages": (1, 5000), "max_depth": (1, 20),
+                    "concurrent": (1, 20), "max_time": (1, 1440),
+                }
+                low, high = limits[key]
+                if not low <= value <= high:
+                    raise ValueError(f"{key} must be between {low} and {high}")
+            elif key == "delay":
+                value = float(value)
+                if not 0.0 <= value <= 60.0:
+                    raise ValueError("delay must be between 0 and 60")
+            elif key == "theme" and value not in {"light", "dark", "system"}:
+                raise ValueError("theme must be light, dark, or system")
+            elif key == "polling_interval" and value not in {0, 2, 5, 10}:
+                raise ValueError("polling_interval must be 0, 2, 5, or 10")
             # Basic type coercion / validation
             expected_type = type(DEFAULT_SETTINGS[key])
             try:

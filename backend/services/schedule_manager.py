@@ -38,8 +38,16 @@ def _next_run_from_cron(cron_expr: str, base: datetime) -> datetime:
             return itr.get_next(datetime)
         except Exception:
             pass
-    # Simple fallback
-    return base + timedelta(days=1)
+    raise ValueError("croniter is required for custom cron schedules")
+
+
+def _validate_cron_expr(cron_expr: str) -> None:
+    if not _HAS_CRONITER:
+        raise ValueError("croniter is required for custom cron schedules")
+    try:
+        _croniter(cron_expr, _now_utc())
+    except Exception as exc:
+        raise ValueError(f"Invalid cron expression: {exc}") from exc
 
 
 def _next_run_from_frequency(frequency: str, cron_expr: str, base: datetime) -> datetime:
@@ -109,6 +117,8 @@ class ScheduleManager:
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         frequency = data.get("frequency", "daily")
+        if frequency not in {"daily", "weekly", "monthly", "custom"}:
+            raise ValueError("Unsupported schedule frequency")
         cron_expr = data.get("cron_expr", "")
         if not cron_expr:
             # Generate a sensible default cron expression
@@ -118,6 +128,11 @@ class ScheduleManager:
                 "monthly": "0 2 1 * *",
             }
             cron_expr = _freq_to_cron.get(frequency, "0 2 * * *")
+
+        if frequency == "custom":
+            if not cron_expr:
+                raise ValueError("cron_expr is required for custom schedules")
+            _validate_cron_expr(cron_expr)
 
         now = _now_utc()
         next_run = _next_run_from_frequency(frequency, cron_expr, now)
@@ -151,12 +166,13 @@ class ScheduleManager:
             sched = store.get(sched_id)
             if not sched:
                 return None
-
             if "name" in data:
                 sched["name"] = str(data["name"]).strip() or sched["name"]
             if "url" in data:
                 sched["url"] = str(data["url"]).strip()
             if "frequency" in data:
+                if data["frequency"] not in {"daily", "weekly", "monthly", "custom"}:
+                    raise ValueError("Unsupported schedule frequency")
                 sched["frequency"] = data["frequency"]
             if "cron_expr" in data:
                 sched["cron_expr"] = data["cron_expr"]
@@ -167,6 +183,10 @@ class ScheduleManager:
 
             # Recalculate next run if timing fields changed
             if "frequency" in data or "cron_expr" in data:
+                if sched["frequency"] == "custom":
+                    if not sched.get("cron_expr"):
+                        raise ValueError("cron_expr is required for custom schedules")
+                    _validate_cron_expr(sched["cron_expr"])
                 base = _now_utc()
                 sched["next_run_at"] = _iso(
                     _next_run_from_frequency(
@@ -229,6 +249,8 @@ class ScheduleManager:
             sched = store.get(sched_id)
             if not sched:
                 return None
+            if sched.get("last_run_status") == "Running":
+                return None
 
             now = _now_utc()
             next_run = _next_run_from_frequency(
@@ -244,6 +266,32 @@ class ScheduleManager:
             store[sched_id] = sched
             self._save(store)
         return sched
+
+    def claim_due_schedule(self, sched_id: str, task_id: str) -> Optional[Dict[str, Any]]:
+        """Re-check and claim a due schedule in one locked operation."""
+        with self._store_lock:
+            store = self._load()
+            sched = store.get(sched_id)
+            if not sched or not sched.get("enabled"):
+                return None
+            due_value = sched.get("next_run_at")
+            if not due_value:
+                return None
+            due_at = datetime.fromisoformat(due_value)
+            if due_at.tzinfo is None:
+                due_at = due_at.replace(tzinfo=timezone.utc)
+            if due_at > _now_utc():
+                return None
+            now = _now_utc()
+            sched["last_run_at"] = _iso(now)
+            sched["last_task_id"] = task_id
+            sched["next_run_at"] = _iso(_next_run_from_frequency(
+                sched.get("frequency", "daily"), sched.get("cron_expr", ""), now
+            ))
+            sched["last_run_status"] = "Running"
+            store[sched_id] = sched
+            self._save(store)
+            return sched
 
     def update_last_run_status(self, sched_id: str, status: str):
         with self._store_lock:

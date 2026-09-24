@@ -19,6 +19,11 @@ from typing import Any, Dict, Iterator, List, Optional, Set
 from backend.paths import OUTPUT_DIR
 from backend.services.storage import write_json_atomic
 
+try:
+    import ijson
+except ImportError:  # compatibility for environments before dependency install
+    ijson = None
+
 # Domain names: allow letters, digits, dots, hyphens, underscores
 _DOMAIN_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
@@ -86,16 +91,23 @@ class ReportManager:
         summary: Dict[str, Any] = {"domain": domain}
         if data_file.exists():
             try:
-                # Parse only top-level scalars by using a streaming approach:
-                # load the full object but immediately discard the pages array.
-                with open(data_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for field in _SUMMARY_FIELDS:
-                    if field in data:
-                        summary[field] = data[field]
-                # Count emails for summary card
-                summary["email_count"] = len(data.get("all_emails", []))
-                summary["phone_count"] = len(data.get("all_phones", []))
+                if ijson is not None:
+                    with open(data_file, "rb") as f:
+                        for key, value in ijson.kvitems(f, ""):
+                            if key in _SUMMARY_FIELDS:
+                                summary[key] = value
+                            elif key == "all_emails":
+                                summary["email_count"] = len(value)
+                            elif key == "all_phones":
+                                summary["phone_count"] = len(value)
+                else:
+                    with open(data_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    for field in _SUMMARY_FIELDS:
+                        if field in data:
+                            summary[field] = data[field]
+                    summary["email_count"] = len(data.get("all_emails", []))
+                    summary["phone_count"] = len(data.get("all_phones", []))
             except Exception:
                 pass
 
@@ -142,16 +154,28 @@ class ReportManager:
             return None
 
         try:
-            with open(data_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            result: Dict[str, Any] = {}
+            first_pages: list[Any] = []
+            total_pages = 0
+            if ijson is not None:
+                with open(data_file, "rb") as f:
+                    for key, value in ijson.kvitems(f, ""):
+                        if key != "pages":
+                            result[key] = value
+                with open(data_file, "rb") as f:
+                    for page in ijson.items(f, "pages.item"):
+                        total_pages += 1
+                        if len(first_pages) < 50:
+                            first_pages.append(page)
+            else:
+                with open(data_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                first_pages = data.get("pages", [])[:50]
+                total_pages = len(data.get("pages", []))
+            result["pages"] = first_pages
+            result["total_page_count"] = total_pages
         except Exception:
             return None
-
-        # Return metadata + bounded first page slice
-        pages = data.get("pages", [])
-        result = {k: v for k, v in data.items() if k != "pages"}
-        result["pages"] = pages[:50]
-        result["total_page_count"] = len(pages)
         return result
 
     def get_pages(
@@ -171,24 +195,31 @@ class ReportManager:
             return None
 
         try:
-            with open(data_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            limit = max(1, min(limit, 100))
+            offset = max(0, offset)
+            page_slice: List[Any] = []
+            total = 0
+            iterator = None
+            if ijson is not None:
+                with open(data_file, "rb") as f:
+                    iterator = ijson.items(f, "pages.item")
+                    for page in iterator:
+                        if query and query.lower() not in page.get("url", "").lower() and query.lower() not in page.get("page_title", "").lower():
+                            continue
+                        if total >= offset and len(page_slice) < limit:
+                            page_slice.append(page)
+                        total += 1
+            else:
+                with open(data_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                pages = data.get("pages", [])
+                if query:
+                    q = query.lower()
+                    pages = [p for p in pages if q in p.get("url", "").lower() or q in p.get("page_title", "").lower()]
+                total = len(pages)
+                page_slice = pages[offset:offset + limit]
         except Exception:
             return None
-
-        pages: List[Any] = data.get("pages", [])
-
-        # Optional text filter on url + page_title
-        if query:
-            q = query.lower()
-            pages = [
-                p for p in pages
-                if q in p.get("url", "").lower() or q in p.get("page_title", "").lower()
-            ]
-
-        limit = max(1, min(limit, 100))
-        offset = max(0, offset)
-        page_slice = pages[offset: offset + limit]
 
         return {
             "domain": domain,
@@ -218,11 +249,16 @@ class ReportManager:
         except Exception:
             return False
 
-    def generate_summary_json(self, domain: str, data_json_path: Path) -> None:
+    def generate_summary_json(self, domain: str, data_json_path: Path, report: Any = None) -> None:
         """Write a summary.json beside data.json after a completed crawl."""
         try:
-            with open(data_json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            if report is not None:
+                data = {field: getattr(report, field, None) for field in _SUMMARY_FIELDS}
+                data["email_count"] = len(getattr(report, "all_emails", []))
+                data["phone_count"] = len(getattr(report, "all_phones", []))
+            else:
+                with open(data_json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
 
             summary: Dict[str, Any] = {}
             for field in _SUMMARY_FIELDS:
@@ -247,12 +283,6 @@ class ReportManager:
             return None
 
         def _generate():
-            try:
-                with open(data_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                return
-
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow([
@@ -263,7 +293,21 @@ class ReportManager:
             output.truncate(0)
             output.seek(0)
 
-            for page in data.get("pages", []):
+            try:
+                if ijson is not None:
+                    with open(data_file, "rb") as f:
+                        pages = ijson.items(f, "pages.item")
+                        for page in pages:
+                            yield from _csv_page(page, writer, output)
+                else:
+                    with open(data_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    for page in data.get("pages", []):
+                        yield from _csv_page(page, writer, output)
+            except Exception:
+                return
+
+        def _csv_page(page: Dict[str, Any], writer, output):
                 # Prefix dangerous formula cells with apostrophe
                 def safe(val: str) -> str:
                     val = str(val)

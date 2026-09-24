@@ -55,6 +55,14 @@ class CrawlPipeline:
         logger.info(f"{'='*60}")
 
         for i, (name, fetcher) in enumerate(self.stages, 1):
+            event = getattr(self.config, "cancellation_event", None)
+            if event is not None and event.is_set():
+                return CrawlResponse(
+                    success=False,
+                    stage_name="cancelled",
+                    url=url,
+                    attempts=all_attempts,
+                )
             logger.info(f"\n--- Stage {i}/6: {name} ---")
 
             try:

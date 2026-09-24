@@ -2,13 +2,15 @@ import sys
 import asyncio
 import os
 import threading
+import shutil
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -28,8 +30,9 @@ from backend.core.config import PipelineConfig, CrawlerConfig
 from backend.crawler.orchestrator import CrawlOrchestrator
 from backend.exporters.markdown_report import generate_markdown_report
 from backend.exporters.json_export import export_json
-from backend.paths import FRONTEND_DIR, OUTPUT_DIR, DATA_DIR, CHECKPOINT_FILE
+from backend.paths import FRONTEND_DIR, OUTPUT_DIR, DATA_DIR, CHECKPOINT_FILE, CHECKPOINTS_DIR
 from backend.discovery.url_utils import extract_base_domain, normalize_url
+from backend.services.url_validator import validate_crawl_url
 
 
 # ── Lifespan (startup / shutdown + scheduler loop) ────────────────────────────
@@ -53,6 +56,11 @@ async def _schedule_checker_loop(stop_event: asyncio.Event):
                     concurrent=cfg.get("concurrent", 3),
                     no_robots=cfg.get("no_robots", False),
                 )
+                try:
+                    url = validate_crawl_url(url)
+                except ValueError:
+                    schedule_manager.update_last_run_status(sched["id"], "Invalid URL")
+                    continue
                 target_domain = extract_base_domain(normalize_url(url))
                 task_id = task_manager.create_task(
                     url,
@@ -60,7 +68,7 @@ async def _schedule_checker_loop(stop_event: asyncio.Event):
                     schedule_id=sched["id"],
                     target_domain=target_domain,
                 )
-                if schedule_manager.claim_schedule(sched["id"], task_id) is None:
+                if schedule_manager.claim_due_schedule(sched["id"], task_id) is None:
                     task_manager.delete_task(task_id)
                     continue
                 # Dispatch off the event loop and retain the task until it exits.
@@ -85,6 +93,7 @@ async def lifespan(app: FastAPI):
     # Startup: ensure directories exist
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
 
     stop_event = asyncio.Event()
     scheduler_task = asyncio.create_task(_schedule_checker_loop(stop_event))
@@ -116,6 +125,14 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 # Mount static files (HTML, CSS, JS, assets)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
+_report_locks: dict[str, threading.Lock] = {}
+_report_locks_guard = threading.Lock()
+
+
+def _report_lock(domain: str) -> threading.Lock:
+    with _report_locks_guard:
+        return _report_locks.setdefault(domain, threading.Lock())
+
 
 # ── Request / response models ─────────────────────────────────────────────────
 
@@ -139,11 +156,11 @@ class ScheduleCreateRequest(BaseModel):
 
 
 class SettingsUpdateRequest(BaseModel):
-    max_pages: Optional[int] = None
-    max_depth: Optional[int] = None
-    concurrent: Optional[int] = None
-    delay: Optional[float] = None
-    max_time: Optional[int] = None
+    max_pages: Optional[int] = Field(default=None, ge=1, le=5000)
+    max_depth: Optional[int] = Field(default=None, ge=1, le=20)
+    concurrent: Optional[int] = Field(default=None, ge=1, le=20)
+    delay: Optional[float] = Field(default=None, ge=0.0, le=60.0)
+    max_time: Optional[int] = Field(default=None, ge=1, le=1440)
     respect_robots: Optional[bool] = None
     enable_crawl4ai: Optional[bool] = None
     enable_scrapling: Optional[bool] = None
@@ -152,8 +169,8 @@ class SettingsUpdateRequest(BaseModel):
     enable_curl_rotated: Optional[bool] = None
     enable_httpx: Optional[bool] = None
     jina_api_key: Optional[str] = None
-    theme: Optional[str] = None
-    polling_interval: Optional[int] = None
+    theme: Optional[Literal["light", "dark", "system"]] = None
+    polling_interval: Optional[Literal[0, 2, 5, 10]] = None
 
 
 # ── Crawl background task ─────────────────────────────────────────────────────
@@ -165,6 +182,22 @@ def background_crawl_task(task_id: str, req: CrawlRequest):
     asyncio.run(_async_crawl_task(task_id, req))
 
 
+def _finalize_task(task_id: str, status: str, **fields) -> None:
+    """Persist one terminal outcome and synchronize any linked schedule."""
+    task_manager.update_task(task_id, status=status, **fields)
+    task = task_manager.get_task(task_id) or {}
+    schedule_id = task.get("schedule_id")
+    if schedule_id:
+        schedule_status = {
+            "Completed": "Completed",
+            "Failed": "Failed",
+            "Cancelled": "Cancelled",
+            "CancellationTimedOut": "CancellationTimedOut",
+        }.get(status)
+        if schedule_status:
+            schedule_manager.update_last_run_status(schedule_id, schedule_status)
+
+
 async def _run_crawl_worker(task_id: str, req: CrawlRequest):
     """Run a blocking-thread crawl and keep it visible to cancellation/shutdown."""
     worker = asyncio.current_task()
@@ -173,6 +206,16 @@ async def _run_crawl_worker(task_id: str, req: CrawlRequest):
     try:
         await asyncio.to_thread(background_crawl_task, task_id, req)
     finally:
+        event = cancellation_registry.get(task_id)
+        task = task_manager.get_task(task_id) or {}
+        if (event is not None and event.is_set()) or task.get("status") == "CancellationRequested":
+            _finalize_task(
+                task_id,
+                status="Cancelled",
+                cancelled_at=datetime.now().isoformat(),
+                completed_at=datetime.now().isoformat(),
+                error=None,
+            )
         cancellation_registry.remove(task_id)
         worker_registry.remove(task_id)
 
@@ -181,23 +224,17 @@ async def _async_crawl_task(task_id: str, req: CrawlRequest):
     cancel_event = cancellation_registry.get(task_id)
     try:
         if cancel_event is not None and cancel_event.is_set():
-            task_manager.update_task(
-                task_id,
-                status="Cancelled",
-                cancelled_at=datetime.now().isoformat(),
-                completed_at=datetime.now().isoformat(),
-            )
             return
         task_manager.update_task(task_id, status="Running")
 
-        # Resolve effective config: saved settings < request overrides
-        crawler_defaults = settings_manager.get_effective_crawler_config()
-        max_pages = req.max_pages if req.max_pages is not None else crawler_defaults["max_pages"]
-        max_depth = req.max_depth if req.max_depth is not None else crawler_defaults["max_depth"]
-        max_time = req.max_time if req.max_time is not None else crawler_defaults["max_time"]
-        delay = req.delay if req.delay is not None else crawler_defaults["delay"]
-        concurrent = req.concurrent if req.concurrent is not None else crawler_defaults["concurrent"]
-        no_robots = req.no_robots if req.no_robots is not None else crawler_defaults["no_robots"]
+        stored = task_manager.get_task(task_id) or {}
+        effective = stored.get("request_config") or {}
+        max_pages = effective.get("max_pages", 200)
+        max_depth = effective.get("max_depth", 5)
+        max_time = effective.get("max_time", 30)
+        delay = effective.get("delay", 1.5)
+        concurrent = effective.get("concurrent", 3)
+        no_robots = effective.get("no_robots", False)
         saved = settings_manager.get_effective_pipeline_config()
         pipeline_config = PipelineConfig(
             timeout=saved.get("timeout", 30),
@@ -208,6 +245,7 @@ async def _async_crawl_task(task_id: str, req: CrawlRequest):
             enable_curl_rotated=saved.get("enable_curl_rotated", True),
             enable_httpx=saved.get("enable_httpx", True),
             jina_api_key=saved.get("jina_api_key", ""),
+            cancellation_event=cancel_event,
         )
 
         crawler_config = CrawlerConfig(
@@ -230,7 +268,8 @@ async def _async_crawl_task(task_id: str, req: CrawlRequest):
             max_concurrent=crawler_config.max_concurrent,
             respect_robots=crawler_config.respect_robots,
             checkpoint_every=crawler_config.checkpoint_every,
-            checkpoint_file=crawler_config.checkpoint_file,
+            checkpoint_file=str(CHECKPOINTS_DIR / f"{task_id}.json"),
+            cancellation_grace_seconds=crawler_config.cancellation_grace_seconds,
             pipeline_config=pipeline_config,
         )
 
@@ -250,33 +289,47 @@ async def _async_crawl_task(task_id: str, req: CrawlRequest):
         )
 
         if cancel_event is not None and cancel_event.is_set():
-            task_manager.update_task(
-                task_id,
-                status="Cancelled",
-                cancelled_at=datetime.now().isoformat(),
-                completed_at=datetime.now().isoformat(),
-                error=None,
-            )
-            task = task_manager.get_task(task_id) or {}
-            if task.get("schedule_id"):
-                schedule_manager.update_last_run_status(task["schedule_id"], "Cancelled")
             return
 
-        # Generate outputs atomically into a tmp dir then promote
-        output_dir = OUTPUT_DIR / report.domain
-        output_dir.mkdir(parents=True, exist_ok=True)
-        md_path = generate_markdown_report(report, output_dir)
-        json_path = export_json(report, output_dir)
-
-        # Generate lightweight summary.json for fast listing
-        report_manager.generate_summary_json(report.domain, json_path)
+        # Publish a complete report from a task-specific temporary directory.
+        tmp_dir = OUTPUT_DIR / f"_tmp_{task_id}"
+        backup_dir = OUTPUT_DIR / f"_old_{task_id}"
+        final_dir = OUTPUT_DIR / report.domain
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            json_path = export_json(report, tmp_dir)
+            generate_markdown_report(report, tmp_dir)
+            report_manager.generate_summary_json(report.domain, json_path, report=report)
+            if cancel_event is not None and cancel_event.is_set():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                return
+            # Keep the previous report recoverable until promotion succeeds.
+            with _report_lock(report.domain):
+                if final_dir.exists():
+                    final_dir.rename(backup_dir)
+                try:
+                    tmp_dir.rename(final_dir)
+                except Exception:
+                    if backup_dir.exists() and not final_dir.exists():
+                        backup_dir.rename(final_dir)
+                    raise
+                if backup_dir.exists():
+                    shutil.rmtree(backup_dir)
+        except Exception:
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
 
         end_time = datetime.now()
         duration_secs = int((end_time - start_time).total_seconds())
         mins, secs = divmod(duration_secs, 60)
         duration_str = f"{mins:02d}:{secs:02d}"
 
-        task_manager.update_task(
+        _finalize_task(
             task_id,
             status="Completed",
             progress=100,
@@ -285,29 +338,16 @@ async def _async_crawl_task(task_id: str, req: CrawlRequest):
             duration=duration_str,
             report_domain=report.domain,
         )
-        task = task_manager.get_task(task_id) or {}
-        if task.get("schedule_id"):
-            schedule_manager.update_last_run_status(task["schedule_id"], "Completed")
 
     except Exception as e:
         if cancel_event is not None and cancel_event.is_set():
-            task_manager.update_task(
-                task_id,
-                status="Cancelled",
-                cancelled_at=datetime.now().isoformat(),
-                completed_at=datetime.now().isoformat(),
-                error=None,
-            )
             return
-        task_manager.update_task(
+        _finalize_task(
             task_id,
             status="Failed",
             error=str(e),
             completed_at=datetime.now().isoformat(),
         )
-        task = task_manager.get_task(task_id) or {}
-        if task.get("schedule_id"):
-            schedule_manager.update_last_run_status(task["schedule_id"], "Failed")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -318,15 +358,20 @@ async def _async_crawl_task(task_id: str, req: CrawlRequest):
 
 @app.post("/api/crawl")
 async def start_crawl(req: CrawlRequest, background_tasks: BackgroundTasks):
-    # Build request_config snapshot for re-run
+    try:
+        req.url = validate_crawl_url(req.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    defaults = settings_manager.get_effective_crawler_config()
     request_config = {
-        "max_pages": req.max_pages,
-        "max_depth": req.max_depth,
-        "max_time": req.max_time,
-        "delay": req.delay,
-        "concurrent": req.concurrent,
-        "no_robots": req.no_robots,
+        "max_pages": req.max_pages if req.max_pages is not None else defaults["max_pages"],
+        "max_depth": req.max_depth if req.max_depth is not None else defaults["max_depth"],
+        "max_time": req.max_time if req.max_time is not None else defaults["max_time"],
+        "delay": req.delay if req.delay is not None else defaults["delay"],
+        "concurrent": req.concurrent if req.concurrent is not None else defaults["concurrent"],
+        "no_robots": req.no_robots if req.no_robots is not None else defaults["no_robots"],
     }
+    req = CrawlRequest(url=req.url, **request_config)
     target_domain = extract_base_domain(normalize_url(req.url))
     task_id = task_manager.create_task(
         req.url, request_config=request_config, target_domain=target_domain
@@ -355,7 +400,7 @@ def get_task(task_id: str):
 def get_status(task_id: str):
     task = task_manager.get_task(task_id)
     if not task:
-        return {"error": "Task not found"}
+        raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
@@ -483,7 +528,8 @@ def delete_report(domain: str):
         raise HTTPException(
             status_code=409, detail="Cannot delete report while crawl is active"
         )
-    deleted = report_manager.delete_report(domain, active_domains)
+    with _report_lock(domain):
+        deleted = report_manager.delete_report(domain, active_domains)
     if not deleted:
         raise HTTPException(status_code=404, detail="Report not found or invalid domain")
     return {"success": True}
@@ -500,12 +546,22 @@ def list_schedules():
 def create_schedule(req: ScheduleCreateRequest):
     if not req.url:
         raise HTTPException(status_code=422, detail="URL is required")
-    return schedule_manager.create(req.model_dump())
+    try:
+        req.url = validate_crawl_url(req.url)
+        return schedule_manager.create(req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @app.put("/api/schedules/{sched_id}")
 def update_schedule(sched_id: str, req: ScheduleCreateRequest):
-    result = schedule_manager.update(sched_id, req.model_dump(exclude_unset=True))
+    try:
+        payload = req.model_dump(exclude_unset=True)
+        if payload.get("url"):
+            payload["url"] = validate_crawl_url(payload["url"])
+        result = schedule_manager.update(sched_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     if result is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return result
@@ -519,13 +575,21 @@ def delete_schedule(sched_id: str, cancel_active: bool = Query(default=False)):
             status_code=409,
             detail="Schedule has an active crawl; use cancel_active=true to request cancellation",
         )
+    cancellation_pending = bool(active_tasks)
     for task in active_tasks:
         task_manager.update_task(task["id"], status="CancellationRequested")
         cancellation_registry.request(task["id"])
     deleted = schedule_manager.delete(sched_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Schedule not found")
-    return {"success": True}
+    payload = {
+        "success": True,
+        "cancellation_pending": cancellation_pending,
+        "task_ids": [task["id"] for task in active_tasks],
+    }
+    if cancellation_pending:
+        return JSONResponse(status_code=202, content=payload)
+    return payload
 
 
 @app.post("/api/schedules/{sched_id}/toggle")
@@ -544,6 +608,10 @@ async def run_schedule_now(sched_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail="Schedule not found")
 
     url = sched.get("url", "")
+    try:
+        url = validate_crawl_url(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     cfg = sched.get("config", {})
     req = CrawlRequest(
         url=url,
@@ -579,7 +647,10 @@ def get_settings():
 @app.put("/api/settings")
 def update_settings(req: SettingsUpdateRequest):
     updates = req.model_dump(exclude_none=True)
-    return settings_manager.update_settings(updates)
+    try:
+        return settings_manager.update_settings(updates)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @app.post("/api/settings/reset")
@@ -594,7 +665,15 @@ def get_storage():
     def _dir_size_mb(p: Path) -> float:
         if not p.exists():
             return 0.0
-        total = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+        total = 0
+        for file_path in p.rglob("*"):
+            if file_path.is_symlink() or not file_path.is_file():
+                continue
+            try:
+                file_path.resolve().relative_to(p.resolve())
+                total += file_path.stat().st_size
+            except (OSError, ValueError):
+                continue
         return round(total / (1024 * 1024), 2)
 
     reports_count = sum(
@@ -605,17 +684,33 @@ def get_storage():
         "reports_count": reports_count,
         "output_size_mb": _dir_size_mb(OUTPUT_DIR),
         "data_size_mb": _dir_size_mb(DATA_DIR),
-        "checkpoint_exists": CHECKPOINT_FILE.exists(),
-        "checkpoint_path": str(CHECKPOINT_FILE),
+        "checkpoint_exists": CHECKPOINT_FILE.exists() or any(CHECKPOINTS_DIR.glob("*.json")),
+        "checkpoint_path": str(CHECKPOINTS_DIR),
     }
 
 
 @app.post("/api/system/clear-checkpoint")
 def clear_checkpoint():
+    CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
+    removed = 0
+    for checkpoint in CHECKPOINTS_DIR.glob("*.json"):
+        if checkpoint.is_file() and not checkpoint.is_symlink():
+            checkpoint.unlink()
+            removed += 1
+    # Legacy checkpoint is removed only as part of explicit clear-all behavior.
     if CHECKPOINT_FILE.exists():
         CHECKPOINT_FILE.unlink()
-        return {"success": True, "message": "Checkpoint cleared"}
-    return {"success": False, "message": "No checkpoint file found"}
+        removed += 1
+    return {"success": True, "removed": removed}
+
+
+@app.delete("/api/system/checkpoints/{task_id}")
+def clear_task_checkpoint(task_id: str):
+    checkpoint = CHECKPOINTS_DIR / f"{task_id}.json"
+    if checkpoint.exists():
+        checkpoint.unlink()
+        return {"success": True}
+    return {"success": False, "message": "Checkpoint not found"}
 
 
 # ── Page routes ───────────────────────────────────────────────────────────────

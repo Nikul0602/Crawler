@@ -12,6 +12,8 @@ class PipelineConfig:
     # --- Global ---
     timeout: int = 30                # seconds per stage
     min_content_length: int = 200    # minimum chars to consider content valid
+    # Runtime-only cooperative cancellation signal; never persisted or exposed.
+    cancellation_event: object | None = None
 
     # --- Stage Toggles ---
     enable_crawl4ai: bool = True
@@ -118,6 +120,7 @@ class CrawlerConfig:
     # Rate limiting
     request_delay: float = 1.5          # seconds between requests
     max_concurrent: int = 3             # concurrent fetches
+    cancellation_grace_seconds: int = 30
 
     # Crawl behaviour
     respect_robots: bool = True         # obey robots.txt
