@@ -42,6 +42,11 @@ def _next_run_from_cron(cron_expr: str, base: datetime) -> datetime:
 
 
 def _validate_cron_expr(cron_expr: str) -> None:
+    # ``0`` was previously left in the UI field as a placeholder. Keep
+    # accepting it for compatibility while the custom-cron controls are
+    # disabled in the frontend; it is handled as the normal daily fallback.
+    if str(cron_expr).strip() == "0":
+        return
     if not _HAS_CRONITER:
         raise ValueError("croniter is required for custom cron schedules")
     try:
@@ -68,6 +73,8 @@ def _next_run_from_frequency(frequency: str, cron_expr: str, base: datetime) -> 
             last_day = calendar.monthrange(year, month)[1]
             return base.replace(year=year, month=month, day=min(base.day, last_day))
     if frequency == "custom" and cron_expr:
+        if str(cron_expr).strip() == "0":
+            return base + timedelta(days=1)
         return _next_run_from_cron(cron_expr, base)
     # Default: daily
     return base + timedelta(days=1)
@@ -79,6 +86,22 @@ def _now_utc() -> datetime:
 
 def _iso(dt: datetime) -> str:
     return dt.isoformat()
+
+
+def _parse_one_time(value: str, timezone_name: str = "UTC") -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("run_at is required")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("run_at must be a valid date and time") from exc
+    if parsed.tzinfo is None:
+        try:
+            from zoneinfo import ZoneInfo
+            parsed = parsed.replace(tzinfo=ZoneInfo(timezone_name or "UTC"))
+        except Exception as exc:
+            raise ValueError(f"Unknown timezone: {timezone_name}") from exc
+    return parsed.astimezone(timezone.utc)
 
 
 # ── ScheduleManager ──────────────────────────────────────────────────────────
@@ -116,6 +139,35 @@ class ScheduleManager:
         return schedules
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        timezone_name = str(data.get("timezone", "UTC") or "UTC")
+        run_at_value = data.get("run_at")
+        if run_at_value:
+            run_at = _parse_one_time(str(run_at_value), timezone_name)
+            if run_at <= _now_utc():
+                raise ValueError("run_at must be in the future")
+            now = _now_utc()
+            sched: Dict[str, Any] = {
+                "id": self._new_id(),
+                "name": str(data.get("name", "")).strip() or "Unnamed Schedule",
+                "url": str(data.get("url", "")).strip(),
+                "enabled": True,
+                "frequency": "once",
+                "cron_expr": "",
+                "run_at": _iso(run_at),
+                "timezone": timezone_name,
+                "config": self._validate_config(data.get("config", {})),
+                "created_at": _iso(now),
+                "last_run_at": None,
+                "last_run_status": None,
+                "last_task_id": None,
+                "next_run_at": _iso(run_at),
+            }
+            with self._store_lock:
+                store = self._load()
+                store[sched["id"]] = sched
+                self._save(store)
+            return sched
+
         frequency = data.get("frequency", "daily")
         if frequency not in {"daily", "weekly", "monthly", "custom"}:
             raise ValueError("Unsupported schedule frequency")
@@ -180,6 +232,20 @@ class ScheduleManager:
                 sched["config"] = self._validate_config(data["config"])
             if "enabled" in data:
                 sched["enabled"] = bool(data["enabled"])
+
+            if "run_at" in data and data.get("run_at"):
+                timezone_name = str(data.get("timezone", sched.get("timezone", "UTC")) or "UTC")
+                run_at = _parse_one_time(str(data["run_at"]), timezone_name)
+                if run_at <= _now_utc() and sched.get("last_run_status") != "Running":
+                    raise ValueError("run_at must be in the future")
+                sched["frequency"] = "once"
+                sched["cron_expr"] = ""
+                sched["run_at"] = _iso(run_at)
+                sched["timezone"] = timezone_name
+                sched["next_run_at"] = _iso(run_at)
+                store[sched_id] = sched
+                self._save(store)
+                return sched
 
             # Recalculate next run if timing fields changed
             if "frequency" in data or "cron_expr" in data:
@@ -262,6 +328,10 @@ class ScheduleManager:
             sched["last_task_id"] = task_id
             sched["next_run_at"] = _iso(next_run)
             sched["last_run_status"] = "Running"
+            if sched.get("frequency") == "once":
+                sched["next_run_at"] = None
+            else:
+                sched["next_run_at"] = _iso(next_run)
 
             store[sched_id] = sched
             self._save(store)
@@ -285,9 +355,12 @@ class ScheduleManager:
             now = _now_utc()
             sched["last_run_at"] = _iso(now)
             sched["last_task_id"] = task_id
-            sched["next_run_at"] = _iso(_next_run_from_frequency(
-                sched.get("frequency", "daily"), sched.get("cron_expr", ""), now
-            ))
+            if sched.get("frequency") == "once":
+                sched["next_run_at"] = None
+            else:
+                sched["next_run_at"] = _iso(_next_run_from_frequency(
+                    sched.get("frequency", "daily"), sched.get("cron_expr", ""), now
+                ))
             sched["last_run_status"] = "Running"
             store[sched_id] = sched
             self._save(store)

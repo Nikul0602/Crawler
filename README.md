@@ -1,261 +1,304 @@
-# 🕷️ Universal Website Crawler
+# CrawlMaster
 
-A robust, dual-mode Python crawler that can either **map and extract content from entire websites** (universal mode) or **scrape IT job listings** from company career pages (legacy mode).
+<p align="center">
+  <img src="frontend/assets/logo.png" alt="CrawlMaster logo" width="280">
+</p>
 
-It features a 6-stage fallback fetch pipeline that automatically escalates through increasingly powerful HTTP strategies — from a headless browser down to plain HTTPX — to ensure maximum page reachability even against anti-bot measures.
+CrawlMaster is a Python website crawler with a FastAPI dashboard. It supports full-site content crawling, legacy IT-job extraction, report browsing, recurring schedules, settings management, task monitoring, and cooperative crawl cancellation.
 
----
+## Current system
 
-## ✨ Features
+The project has two execution modes:
 
-### Universal Crawl Mode (`--mode crawl`)
-- 🗺️ **Full-site mapping** — discovers URLs via sitemap.xml, robots.txt, and recursive link following
-- 📄 **Rich content extraction** — headings, paragraphs, lists, tables, images, and structured data (JSON-LD)
-- 📬 **Contact intelligence** — aggregates emails, phone numbers, social media links across all pages
-- 🔖 **SEO / meta data** — captures meta descriptions, OG tags, canonical URLs per page
-- 💾 **Checkpointing** — saves crawl state every N pages; resume interrupted runs with `--resume`
-- 📊 **Dual output** — generates a Markdown report and a machine-readable JSON export
-- ⚙️ **Configurable limits** — max pages, depth, time budget, concurrency, and request delay
+1. **CLI crawler** — crawl a website from the terminal and write Markdown/JSON output.
+2. **Web dashboard** — start and monitor crawls, inspect reports, manage schedules, and update crawler defaults.
 
-### Legacy IT Job Mode (`--mode jobs`)
-- 🔍 **IT role filtering** — 3-pass classifier (prefix → rejection → deep-match) for accurate IT job detection
-- 🏷️ **Rich job metadata** — title, location, department, type, salary, and direct URL
-- 📤 **Flexible output** — human-readable text or structured JSON
-- 🧩 **Backward compatible** — the original single-page job crawling behaviour is fully preserved
+The crawler uses a six-stage fallback pipeline:
 
-### 6-Stage Fetch Pipeline (shared by both modes)
-Stages run in order; the first successful response is used:
+| Stage | Fetch strategy |
+|---|---|
+| 1 | Crawl4AI / headless browser |
+| 2 | Scrapling / browser and stealth fetching |
+| 3 | Jina Reader proxy |
+| 4 | curl-cffi TLS impersonation |
+| 5 | curl-cffi rotated profiles |
+| 6 | Plain HTTPX |
 
-| # | Stage | Strategy |
-|---|-------|----------|
-| 1 | **Crawl4AI** | Headless Chromium browser with JS rendering |
-| 2 | **Scrapling** | Smart headless browser with stealth features |
-| 3 | **Jina Reader** | Cloud-based reader proxy (`r.jina.ai`) |
-| 4 | **curl_cffi TLS** | TLS fingerprint impersonation (Chrome 120) |
-| 5 | **curl_cffi Rotated** | Rotated browser profiles with jitter/retries |
-| 6 | **httpx Plain** | Standard async HTTP/2 fallback |
+## Architecture
 
----
-
-## 📁 Project Structure
-
+```text
+CLI / Dashboard
+      |
+      v
+FastAPI API + lifespan scheduler
+      |
+      +-- TaskManager -------- data/tasks.json
+      +-- ScheduleManager ---- data/schedules.json
+      +-- SettingsManager ---- data/settings.json
+      +-- ReportManager ------ output/<domain>/
+      +-- CancellationRegistry / WorkerRegistry
+      |
+      v
+CrawlOrchestrator
+      |
+      +-- robots and sitemap discovery
+      +-- navigation and link discovery
+      +-- concurrent page queue
+      +-- content/contact/meta extraction
+      +-- Markdown, JSON, summary exports
 ```
+
+## Repository structure
+
+```text
 Crawler/
-├── main.py               # Entry point & CLI argument handling
-├── README.md
-├── requirements.txt
-├── PLAN.md
-├── crawl/                # Local virtual environment (ignored)
-├── output/               # Generated crawl reports (ignored)
-├── crawl_state.json      # Runtime checkpoint file (ignored)
-│
-├── backend/
-│   ├── api/              # FastAPI dashboard API
-│   ├── core/             # Config, models, and 6-stage pipeline
-│   ├── crawler/          # Universal crawl engine
-│   ├── discovery/        # Sitemap, robots, link, and navigation discovery
-│   ├── extraction/       # Content, contact, meta, and job extractors
-│   ├── exporters/        # Markdown and JSON report writers
-│   ├── services/         # Task state/services
-│   ├── stages/           # Individual fetch stages
-│   └── paths.py          # Root-level runtime path constants
-│
-└── frontend/             # Static dashboard UI
-    ├── index.html
-    ├── app.js
-    └── styles.css
+├── .gitignore                      Ignore rules for local/generated files
+├── main.py                         CLI and dashboard entry point
+├── requirements.txt                Runtime and test dependencies
+├── pytest.ini                      Pytest configuration
+├── backend/                        Python application package
+│   ├── api/                        FastAPI routes and worker lifecycle
+│   ├── core/                       Config, models, and fallback pipeline
+│   ├── crawler/                    Queue, orchestration, and checkpoints
+│   ├── discovery/                  Robots, sitemaps, links, and navigation
+│   ├── extraction/                 Content, contacts, metadata, and jobs
+│   ├── exporters/                  Markdown and JSON exporters
+│   ├── services/                   Tasks, schedules, settings, reports,
+│   │                               storage, cancellation, and URL validation
+│   └── stages/                     Individual fetch implementations
+├── frontend/                       Static dashboard UI
+│   ├── pages/                      Dashboard HTML pages
+│   ├── scripts/                    Page and shared JavaScript
+│   ├── styles/styles.css           Shared dashboard styles
+│   └── assets/logo.png             Dashboard logo
+├── tests/                          Pytest test suite
+│   ├── conftest.py                 Shared test configuration
+│   └── test_*.py                   Unit and service tests
+├── docs/                           Project plans and implementation reports
+│   ├── plans/
+│   │   ├── implementation_plan.md  Detailed implementation plan
+│   │   └── execution_plan.md       Current execution sequence
+│   └── reports/
+│       ├── IMPLEMENTATION_SUMMARY.md
+│       ├── IMPLEMENTATION_AUDIT_AND_FIXES.md
+│       └── REMAINING_WORK_ENVIRONMENTS.md
 ```
 
----
+The following paths are created locally at runtime and are intentionally excluded
+from GitHub:
 
-## 🚀 Quick Start
-
-### 1. Create & activate a virtual environment
-
-```bash
-python -m venv crawl
-# Windows
-crawl\Scripts\activate
-# macOS / Linux
-source crawl/bin/activate
+```text
+├── data/                           Task, schedule, settings, and checkpoints
+├── output/                         Generated crawl reports
+├── crawl_state.json                CLI checkpoint state
+├── venv/                           Local Python virtual environment
+└── .pytest_cache/                  Local pytest cache
 ```
 
-### 2. Install dependencies
+## Installation
 
-```bash
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-> **Note:** `crawl4ai` requires a one-time browser install after `pip install`:
-> ```bash
-> crawl4ai-setup
-> ```
+For browser-based stages, install the browser runtime if required:
 
----
+```powershell
+crawl4ai-setup
+```
 
-## 💻 Usage
+## CLI usage
 
-### Universal Website Crawl (default mode)
+### Universal website crawl
 
-```bash
-# Basic crawl – all defaults
+```powershell
 python main.py https://example.com
-
-# Limit scope
 python main.py https://example.com --max-pages 100 --max-depth 3
-
-# Custom output directory and time budget
-python main.py https://example.com --output ./reports --max-time 10
-
-# Faster crawl without robots.txt compliance
-python main.py https://example.com --no-robots --concurrent 10 --delay 0.5
-
-# Resume an interrupted crawl
+python main.py https://example.com --max-time 10 --concurrent 5 --delay 0.5
 python main.py https://example.com --resume
-
-# Output JSON only
 python main.py https://example.com --format json
-
-# Enable debug logging
-python main.py https://example.com --verbose
 ```
 
-### Legacy IT Job Crawler
+Important universal options:
 
-```bash
-# Crawl a career page for IT jobs (default output: text)
-python main.py https://company.com/careers --mode jobs
-
-# Show all jobs, not just IT roles
-python main.py https://company.com/careers --mode jobs --all-jobs
-
-# Output as JSON
-python main.py https://company.com/careers --mode jobs --jobs-output json
-
-# Use a Jina API key for higher rate limits
-python main.py https://company.com/careers --mode jobs --jina-key YOUR_KEY
-
-# Disable browser-based stages (faster, less capable)
-python main.py https://company.com/careers --mode jobs --disable-browser
-```
-
----
-
-## ⚙️ CLI Reference
-
-### Global Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `url` | *(required)* | URL to crawl |
-| `--mode` | `crawl` | `crawl` (universal) or `jobs` (IT job crawler) |
-| `--timeout` | `30` | Per-page fetch timeout in seconds |
-| `--verbose`, `-v` | off | Enable DEBUG-level logging |
-
-### Universal Crawl Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
+| Option | Default | Meaning |
+|---|---:|---|
 | `--max-pages` | `200` | Maximum successfully crawled pages |
-| `--max-discovered-urls` | `1000` | Maximum unique URLs to discover/enqueue |
-| `--max-depth` | `5` | Maximum link-follow depth from start URL |
+| `--max-discovered-urls` | `1000` | Maximum discovered/enqueued URLs |
+| `--max-depth` | `5` | Maximum link depth |
 | `--max-time` | `30` | Time budget in minutes |
-| `--delay` | `1.5` | Seconds between requests |
-| `--concurrent` | `3` | Max concurrent fetch workers |
-| `--no-robots` | off | Ignore `robots.txt` restrictions |
-| `--resume` | off | Resume from `crawl_state.json` checkpoint |
-| `--output` | `./output` | Output directory for reports |
-| `--format` | `markdown json` | Space-separated list of output formats |
+| `--delay` | `1.5` | Delay between request starts |
+| `--concurrent` | `3` | Concurrent page workers |
+| `--no-robots` | off | Ignore robots.txt restrictions |
+| `--resume` | off | Resume a checkpoint |
+| `--output` | `./output` | Report output directory |
+| `--format` | `markdown json` | Output formats |
 
-### Legacy Job Crawler Options
+### Legacy IT job mode
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--disable-browser` | off | Skip Crawl4AI and Scrapling stages |
-| `--disable-jina` | off | Skip Jina Reader stage |
-| `--jina-key` | `""` | Jina API key for higher rate limits |
-| `--all-jobs` | off | Return all jobs, not just IT roles |
-| `--jobs-output` | `text` | `text` or `json` |
-
----
-
-## 📤 Output
-
-### Universal Crawl
-For a crawled domain `example.com`, outputs are written to `./output/example.com/`:
-
-```
-output/
-└── example.com/
-    ├── report.md    # Human-readable Markdown report
-    └── data.json    # Machine-readable full data export
+```powershell
+python main.py https://company.example/careers --mode jobs
+python main.py https://company.example/careers --mode jobs --all-jobs
+python main.py https://company.example/careers --mode jobs --jobs-output json
+python main.py https://company.example/careers --mode jobs --disable-browser
+python main.py https://company.example/careers --mode jobs --jina-key YOUR_KEY
 ```
 
-The **Markdown report** includes:
-- Crawl summary (pages, words, images, duration)
-- Per-page content (headings, key paragraphs, links)
-- Aggregated contacts (emails, phones, social profiles)
-- External links
+## Dashboard
 
-The **JSON export** is the serialised `WebsiteReport` dataclass — suitable for ingestion into a database or downstream processing.
+Start the dashboard:
 
-### IT Job Mode
-Results are printed to stdout — either formatted text or JSON.
-
----
-
-## 🔧 Configuration
-
-Key defaults are defined as dataclasses in `backend/core/config.py`:
-
-```python
-# Universal crawler
-CrawlerConfig(
-    max_pages=200,              # successfully crawled page cap
-    max_discovered_urls=1000,   # discovery/queue growth cap
-    max_depth=5,
-    max_time_minutes=30,
-    request_delay=1.5,
-    max_concurrent=3,
-    respect_robots=True,
-    checkpoint_every=25,
-    checkpoint_file="crawl_state.json",
-)
-
-# Per-page fetch pipeline
-PipelineConfig(
-    timeout=30,
-    enable_crawl4ai=True,
-    enable_scrapling=True,
-    enable_jina=True,
-    curl_impersonate="chrome120",
-)
+```powershell
+python main.py --mode server
 ```
 
-All values can be overridden at runtime via CLI flags.
+Open `http://localhost:8000`.
 
----
+| Route | Purpose |
+|---|---|
+| `/` | Start crawls and view dashboard statistics |
+| `/crawls` | Filter tasks, inspect status, cancel, and re-run crawls |
+| `/reports` | Browse reports, pages, contacts, SEO, and downloads |
+| `/schedules` | Create, edit, delete, and run one-time scheduled crawls |
+| `/settings` | Configure crawler defaults, stages, theme, and maintenance |
 
-## 📦 Dependencies
+## Crawl lifecycle and cancellation
 
-| Package | Purpose |
-|---------|---------|
-| `crawl4ai` | Headless Chromium browser via Playwright |
-| `scrapling` | Stealth headless browser |
-| `curl-cffi` | TLS fingerprint impersonation |
-| `httpx[http2]` | Async HTTP/2 client |
-| `beautifulsoup4` + `lxml` | HTML parsing |
-| `pydantic` | Data validation |
-| `jinja2` | Report templating |
-| `rich` | Terminal output formatting |
-| `tldextract` | Registrable domain extraction |
-| `openai` | (Optional) AI-assisted extraction |
-| `dotenv` | `.env` file support |
-| `fastapi` | Web framework for building the crawler's API |
-| `uvicorn` | ASGI server for running the FastAPI application |
+Dashboard crawls receive a task ID. Task metadata is persisted to `data/tasks.json`, while active worker and cancellation state are held by the server process.
 
----
+Task states include:
 
-## 📝 License
+```text
+Queued
+Running
+CancellationRequested
+Cancelled
+Completed
+Failed
+```
 
-This project is for personal / internal use. No license is currently specified.
+Cancel a task:
+
+```text
+POST /api/tasks/{task_id}/cancel
+```
+
+Cancellation is cooperative. The cancellation event stops queue expansion and new page work at orchestrator checkpoints. A third-party browser or network operation already in progress may continue until its timeout.
+
+Deleting an active schedule requires cancellation:
+
+```text
+DELETE /api/schedules/{schedule_id}?cancel_active=true
+```
+
+The response may be `202` while the active crawl is stopping.
+
+## Runtime data and outputs
+
+Runtime data is ignored by Git through `data/` in `.gitignore`.
+
+```text
+data/
+├── tasks.json                 Task history and request snapshots
+├── schedules.json             Recurring schedule definitions
+├── settings.json              Local crawler/UI settings
+└── checkpoints/
+    └── <task_id>.json         Task-specific crawl checkpoints
+```
+
+The dashboard uses task-specific checkpoints. The standalone CLI still uses the legacy root `crawl_state.json` path unless a custom checkpoint path is supplied.
+
+Completed reports are published under:
+
+```text
+output/<domain>/
+├── data.json                  Full WebsiteReport export
+├── report.md                  Human-readable report
+└── summary.json               Lightweight listing metadata
+```
+
+Temporary report directories use `_tmp_<task_id>`. Cancelled crawls should not replace a previous completed report.
+
+## API summary
+
+### Tasks and crawls
+
+```text
+POST   /api/crawl
+GET    /api/tasks
+GET    /api/tasks/{task_id}
+GET    /api/status/{task_id}
+POST   /api/tasks/{task_id}/cancel
+POST   /api/tasks/{task_id}/rerun
+DELETE /api/tasks/{task_id}
+```
+
+### Reports
+
+```text
+GET    /api/reports
+GET    /api/reports/{domain}
+GET    /api/reports/{domain}/pages?offset=0&limit=25&query=
+GET    /api/reports/{domain}/download?format=json|markdown|csv
+DELETE /api/reports/{domain}
+```
+
+### Schedules
+
+```text
+GET    /api/schedules
+POST   /api/schedules
+PUT    /api/schedules/{schedule_id}
+DELETE /api/schedules/{schedule_id}
+POST   /api/schedules/{schedule_id}/toggle
+POST   /api/schedules/{schedule_id}/run-now
+```
+
+### Settings and maintenance
+
+```text
+GET    /api/settings
+PUT    /api/settings
+POST   /api/settings/reset
+GET    /api/system/storage
+POST   /api/system/clear-checkpoint
+DELETE /api/system/checkpoints/{task_id}
+```
+
+## Testing
+
+Run tests from the activated virtual environment:
+
+```powershell
+pytest tests/ -v
+```
+
+Compile-check the backend and tests:
+
+```powershell
+python -m compileall -q backend tests
+```
+
+Current tests cover basic atomic JSON storage, schedule claiming, and unsafe URL rejection. More integration coverage is required for cancellation, worker shutdown, report publication, checkpoint isolation, SSRF redirects/DNS rebinding, frontend safety, and authentication.
+
+## Security and deployment notes
+
+- The dashboard is intended for local use. The `main.py --mode server` launcher currently binds Uvicorn to `0.0.0.0`; restrict this before using it on an untrusted network, or change the host to `127.0.0.1`.
+- Do not commit `data/`, `output/`, checkpoints, task history, schedules, settings, or API keys.
+- URL validation blocks unsupported schemes and common private/loopback destinations. Redirect and DNS-rebinding protection still requires verification before exposing the service to untrusted users.
+- Cancellation is cooperative and depends on finite network/browser timeouts.
+- The scheduler is an in-process scheduler and should be treated as single-process unless a durable scheduler or queue is introduced.
+
+## Current limitations
+
+- Full cancellation behavior inside every third-party network/browser stage is still being completed.
+- Redirect and DNS-rebinding SSRF protection requires additional verification.
+- The Crawls page still has task log/options UI work remaining.
+- No authentication or authorization layer is currently included.
+- Runtime smoke testing requires installed project dependencies.
+
+## License
+
+No license has been specified. This project is currently intended for personal or internal use.

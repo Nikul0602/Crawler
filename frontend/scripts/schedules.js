@@ -11,6 +11,11 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
+function toLocalDateTime(date) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Theme toggle
     const themeToggle = document.getElementById('theme-toggle');
@@ -41,29 +46,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const schedId = document.getElementById('sched-id');
     const schedName = document.getElementById('sched-name');
     const schedUrl = document.getElementById('sched-url');
-    const schedFreq = document.getElementById('sched-freq');
-    const schedCron = document.getElementById('sched-cron');
-    const cronGroup = document.getElementById('cron-group');
+    const schedRunAt = document.getElementById('sched-run-at');
     const schedPages = document.getElementById('sched-pages');
     const schedDepth = document.getElementById('sched-depth');
     const schedNoRobots = document.getElementById('sched-norobots');
-
-    schedFreq.addEventListener('change', () => {
-        cronGroup.style.display = schedFreq.value === 'custom' ? 'block' : 'none';
-    });
 
     btnOpenModal.addEventListener('click', () => {
         form.reset();
         schedId.value = '';
         modalTitle.textContent = 'New Crawl Schedule';
-        cronGroup.style.display = 'none';
+        const defaultRunAt = new Date(Date.now() + 60 * 60 * 1000);
+        defaultRunAt.setMinutes(0, 0, 0);
+        schedRunAt.value = toLocalDateTime(defaultRunAt);
         modal.classList.add('active');
     });
 
-    btnCancel.addEventListener('click', () => modal.classList.remove('active'));
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.classList.remove('active');
-    });
+    // The schedule form stays open until the user explicitly cancels it or
+    // successfully saves it. Background schedule refreshes must not close it.
+    const closeScheduleModal = () => modal.classList.remove('active');
+    btnCancel.addEventListener('click', closeScheduleModal);
 
     // Pills filtering
     document.querySelectorAll('.pill').forEach(pill => {
@@ -116,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="font-weight:600; font-size:14px;">${s.name}</div>
                     <div style="font-size:12px; color:var(--text-muted);">${s.url}</div>
                 </td>
-                <td><span class="frequency-badge">${s.frequency}</span></td>
+                <td><span class="frequency-badge">One time</span></td>
                 <td>
                     <label class="toggle-switch">
                         <input type="checkbox" ${s.enabled ? 'checked' : ''} class="sched-toggle">
@@ -168,9 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 schedId.value = s.id;
                 schedName.value = s.name;
                 schedUrl.value = s.url;
-                schedFreq.value = s.frequency;
-                schedCron.value = s.cron_expr || '';
-                cronGroup.style.display = s.frequency === 'custom' ? 'block' : 'none';
+                schedRunAt.value = toLocalDateTime(new Date(s.run_at || s.next_run_at));
                 schedPages.value = s.config?.max_pages || 200;
                 schedDepth.value = s.config?.max_depth || 5;
                 schedNoRobots.checked = !!s.config?.no_robots;
@@ -203,8 +202,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const payload = {
             name: schedName.value.trim(),
             url: schedUrl.value.trim(),
-            frequency: schedFreq.value,
-            cron_expr: schedCron.value.trim(),
+            run_at: new Date(schedRunAt.value).toISOString(),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             config: {
                 max_pages: parseInt(schedPages.value),
                 max_depth: parseInt(schedDepth.value),
@@ -224,7 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (res.ok) {
                 showToast(id ? 'Schedule updated' : 'Schedule created');
-                modal.classList.remove('active');
+                closeScheduleModal();
                 loadSchedules();
             } else {
                 const err = await res.json();

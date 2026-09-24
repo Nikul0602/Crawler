@@ -71,6 +71,8 @@ async def _schedule_checker_loop(stop_event: asyncio.Event):
                 if schedule_manager.claim_due_schedule(sched["id"], task_id) is None:
                     task_manager.delete_task(task_id)
                     continue
+                if sched.get("frequency") == "once":
+                    schedule_manager.delete(sched["id"])
                 # Dispatch off the event loop and retain the task until it exits.
                 cancellation_registry.register(task_id)
                 worker = asyncio.create_task(_run_crawl_worker(task_id, req))
@@ -151,6 +153,7 @@ class ScheduleCreateRequest(BaseModel):
     url: str
     frequency: str = "daily"
     cron_expr: str = ""
+    run_at: Optional[str] = None
     config: dict = Field(default_factory=dict)
     timezone: str = "UTC"
 
@@ -632,6 +635,8 @@ async def run_schedule_now(sched_id: str, background_tasks: BackgroundTasks):
     if schedule_manager.claim_schedule(sched_id, task_id) is None:
         task_manager.delete_task(task_id)
         raise HTTPException(status_code=409, detail="Schedule could not be claimed")
+    if sched.get("frequency") == "once":
+        schedule_manager.delete(sched_id)
     cancellation_registry.register(task_id)
     background_tasks.add_task(_run_crawl_worker, task_id, req)
     return {"task_id": task_id, "message": "Schedule triggered immediately"}
@@ -716,7 +721,7 @@ def clear_task_checkpoint(task_id: str):
 # ── Page routes ───────────────────────────────────────────────────────────────
 
 def _serve_html(filename: str) -> str:
-    with open(FRONTEND_DIR / filename, "r", encoding="utf-8") as f:
+    with open(FRONTEND_DIR / "pages" / filename, "r", encoding="utf-8") as f:
         return f.read()
 
 

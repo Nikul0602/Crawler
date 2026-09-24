@@ -2,7 +2,7 @@
 
 ## Audit Scope
 
-This report compares the current implementation with `implementation_plan.md` and `IMPLEMENTATION_SUMMARY.md`.
+This report compares the current implementation with [`implementation_plan.md`](../plans/implementation_plan.md) and [`IMPLEMENTATION_SUMMARY.md`](IMPLEMENTATION_SUMMARY.md).
 
 The backend passes `python -m compileall -q backend`. No automated test files currently exist, and endpoint-level smoke testing requires the project dependencies to be installed. Therefore, implemented items below are confirmed by source inspection, not complete runtime verification.
 

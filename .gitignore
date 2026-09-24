@@ -1,5 +1,5 @@
 # ─── Python ───────────────────────────────────────────────────────────────────
-__pycache__
+__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
@@ -41,14 +41,24 @@ logs/
 # ─── Testing ──────────────────────────────────────────────────────────────────
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 /tmp/
+
+# ─── Local runtime files ─────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.pid
+*.tmp
+*.bak
 
 # ─── IDEs & Editors ───────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
+node_modules/
 
 # ─── OS Artifacts ─────────────────────────────────────────────────────────────
 .DS_Store

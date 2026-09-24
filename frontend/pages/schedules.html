@@ -9,7 +9,7 @@
         document.documentElement.dataset.theme = localStorage.getItem('crawlmaster-theme') || 'light';
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles/styles.css">
     <style>
         .page-header {
             display: flex;
@@ -140,7 +140,7 @@
             <header class="topbar">
                 <div class="welcome-text">
                     <h1>Scheduled Crawls</h1>
-                    <p>Automate recurring crawls on a daily, weekly, or custom cron schedule.</p>
+                    <p>Schedule a one-time crawl for the exact date and time you choose.</p>
                 </div>
                 <div class="topbar-actions">
                     <button class="btn btn-primary" id="btn-open-modal">
@@ -168,7 +168,7 @@
                         <thead>
                             <tr>
                                 <th>Schedule</th>
-                                <th>Frequency</th>
+                                <th>Type</th>
                                 <th>Status</th>
                                 <th>Next Run</th>
                                 <th>Last Run</th>
@@ -200,18 +200,15 @@
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div>
-                        <label style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">Frequency</label>
-                        <select id="sched-freq" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main);">
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="custom">Custom Cron</option>
-                        </select>
+                        <label style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">Run date and time</label>
+                        <input type="datetime-local" id="sched-run-at" required style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main);">
                     </div>
+                    <!-- Custom cron input is retained for future use, but disabled for now.
                     <div id="cron-group" style="display: none;">
                         <label style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">Cron Expression</label>
                         <input type="text" id="sched-cron" placeholder="0 2 * * *" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-main);">
                     </div>
+                    -->
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                     <div>
@@ -236,6 +233,6 @@
         </div>
     </div>
 
-    <script src="/static/schedules.js"></script>
+    <script src="/static/scripts/schedules.js"></script>
 </body>
 </html>

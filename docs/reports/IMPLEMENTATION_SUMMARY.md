@@ -1,6 +1,6 @@
 # CrawlMaster — Implementation Summary
 
-This document summarizes the full implementation of the disabled pages (**Reports**, **Schedules**, and **Settings**), atomic storage architecture, scheduler engine, and auxiliary features in CrawlMaster as specified in `implementation_plan.md`.
+This document summarizes the full implementation of the disabled pages (**Reports**, **Schedules**, and **Settings**), atomic storage architecture, scheduler engine, and auxiliary features in CrawlMaster as specified in [`implementation_plan.md`](../plans/implementation_plan.md).
 
 ---
 
